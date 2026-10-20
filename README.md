@@ -1,0 +1,106 @@
+# 心防崩解 三消互动演示
+
+本项目提供一段可放在剧情中段调用的三消会谈：前置剧情位置 → 点击剧情选项 → 震屏并向两侧裂开 → 双人立绘与台词框 → 快速三消与一次中途选择 → 心防击破 +20 → 后续剧情节点。演示集中在陆星河与裴予迟的一次会谈；完成本场不会直接解锁人物最终结局。
+
+公开演示：[打开完整片段](https://xinfang-story-match3.muddyflint6.chatgpt.site/)。独立游戏：[直接调用](https://xinfang-story-match3.muddyflint6.chatgpt.site/?embed=1)。[剧情播放器嵌入示例](https://xinfang-story-match3.muddyflint6.chatgpt.site/embed-demo.html)。
+
+## 本地运行
+
+需要支持 Vite 8 的 Node.js 环境。当前已在 Node.js 26 下验证。
+
+```powershell
+npm.cmd ci
+npm.cmd run dev -- --host 127.0.0.1
+```
+
+完整演示：<http://127.0.0.1:3000/>。独立玩法：<http://127.0.0.1:3000/?embed=1>。剧情播放器调用示例：<http://127.0.0.1:3000/embed-demo.html>。
+
+```powershell
+npm.cmd test
+npm.cmd run lint
+npm.cmd run build
+npm.cmd run preview -- --host 127.0.0.1 --port 3000 --strictPort
+```
+
+开发服务与生产预览使用同一端口时，应先停止其中一个。生产预览需要在修改后重新执行 build。
+
+## 演示规则
+
+点击开场选项即触发约 1.25 秒的战斗入场演出，无需再次确认。立绘对话按切入方式切换台词，说话人物提亮；点击台词或“继续对话”可补全／推进文字，也可以跳过。转场和战前对话结束后才启用棋盘与计时。系统启用“减少动态效果”时简化转场并立即显示完整台词。
+
+默认使用 18 步，不启用实时倒计时。三重心防依次为 24、40、56；每次有效交换消耗 1 步，一次交换的连锁只扣这 1 步。无效交换扣 4 点从容、不扣步数。从容归零会中断会谈。
+
+每颗命中宝石造成 1 点伤害，创伤宝石额外 +1；每多一轮连锁，该轮伤害额外 +2。四消合成行／列宝石，L／T 型合成炸弹，直线五消合成恶女之瞳。特殊宝石会触发连锁；恶女之瞳可与任意相邻宝石交换清色。开局中央放置一颗恶女之瞳，便于首次演示。
+
+每次有效交换后可释放 1 个技能。技能消耗 SP、不消耗步数、不推进敌方回合，且解除全部锁链。每 4 次有效交换触发敌方反制；锁链可通过相邻消除解除，心火在 3 次有效交换后爆发，每颗扣 18 从容。
+
+首次破防暂停战斗，玩家可继续追问或给对方主动权；效果与选择会分别计入战斗和剧情记录。最后一步先完成连锁和阶段选择，再判断胜负。
+
+成功后先展示独立的“心防击破”结算，进度从 0 增长到 20/100；点击“进入后续剧情”后进入“未说完的话”节点。`src/data/demo.ts` 中的 `breakProgress.initial / successGain / maximum` 与 `nextNode.id / title` 控制进度和节点。重试同一场始终从配置的初始进度计算，未达成不增加进度；跨节点累计和场景奖励去重由主影游管理。
+
+需要限时场景时可在 `src/data/demo.ts` 设置 `timeLimitSeconds`，或用 `/?timed=60` 预览。时钟只统计可操作时间；剧情、帮助、暂停、隐藏页面及自动消除演出不扣时。操作用时独立记录，不用剩余时限反推。
+
+## 视频预留位置
+
+`src/data/demo.ts` 中的 `media.before` 与 `media.after.success / partial / failure` 为素材入口，当前为空。空地址显示明确标注的剧情占位画面，不发起视频请求。填入同源视频地址后，`FilmSlot` 使用 HTML video 播放；播放结束或点击继续时推进流程。也可以由你自己的影游播放器管理前后视频，直接嵌入玩法。
+
+占位台词只用于演示局部衔接，正式影片的剧情和人物结局由主项目决定。
+
+## 在剧情播放器中调用
+
+```html
+<iframe
+  id="match3"
+  src="http://127.0.0.1:3000/?embed=1&approach=patient&parentOrigin=https%3A%2F%2Ffilm.example"
+  title="心防交锋"
+  allow="autoplay"
+></iframe>
+```
+
+`embed=1` 跳过前置占位和开场选择，直接触发入场转场、立绘对话、三消；`approach=patient` 带入 SP 增益，`approach=direct` 降低第一重心防。`parentOrigin` 必须是实际剧情播放器的来源；省略时只向同源父页面发送消息，不使用通配符。生产部署时将 iframe 的地址换成你的实际玩法地址。
+
+```js
+const frame = document.getElementById('match3');
+const completed = new Map();
+const continued = new Set();
+window.addEventListener('message', (event) => {
+  if (event.origin !== 'http://127.0.0.1:3000') return;
+  if (event.source !== frame.contentWindow) return;
+  const { type, payload: result } = event.data ?? {};
+  if (result?.version !== 1) return;
+  if (type === 'xinfang:complete') {
+    completed.set(result.runId, result);
+    // 记录结果；保留 iframe 展示击破进度，不在此处切走。
+  }
+  if (type === 'xinfang:continue' && completed.has(result.runId) && !continued.has(result.runId)) {
+    continued.add(result.runId);
+    // 在此处卸载 iframe，用 nextNodeId / continuationId / storyFlags 选择后续片段。
+    // 完整可运行示例见 public/embed-demo.html。
+  }
+});
+```
+
+事件包括 `xinfang:ready`、本局完成一次发送的 `xinfang:complete`，以及点击“进入后续剧情”（未达成时为“回到剧情”）时的 `xinfang:continue`。主播放器等待 continue 后切换节点，确保先展示结算。可按 runId 去重一次尝试；同一剧情节点是否重复发奖由主播放器按场景记录。在同一窗口集成时，可以监听同名 CustomEvent，从 `event.detail` 读取结果。
+
+## 返回结果
+
+结构定义位于 `src/types/demo.ts` 的 `BattleResult`。
+
+| 字段 | 含义 |
+| --- | --- |
+| `version`、`runId` | 协议版本与本次尝试标识；重试生成新 runId |
+| `battleId`、`sceneId` | 玩法与所属剧情场景 |
+| `outcome` | `success` 全部破防；`partial` 至少完成一重但中断；`failure` 未完成第一重 |
+| `reason` | `defense_broken`、`turn_limit`、`time_limit`、`composure` |
+| `grade` | S/A/B/C 战斗表现，与人物最终结局分开 |
+| `approach`、`response` | 开场与中途选择；未到中途时 response 为 null |
+| `phasesCleared`、`turnsUsed`、`turnsRemaining` | 本场进展与步数 |
+| `maxCombo`、`composure`、`activeTimeMs` | 最大连锁、剩余从容、可操作时间 |
+| `storyFlags` | 可交给剧情系统的选择与结果标记 |
+| `continuationId` | 承接片段标识，由影游项目映射到实际视频 |
+| `progressBefore`、`progressDelta`、`breakProgress` | 本场前进度、实际增加值、完成后进度；默认成功为 0、20、20 |
+| `nextNodeId` | 下一剧情节点，默认 `consultation-next` |
+
+成功后根据中途选择返回 `consultation.continue.open` 或 `consultation.continue.tense`；部分达成返回 `consultation.continue.guarded`；未达成返回 `consultation.interrupted`。这些标识用于本场场景，未代表人物最终结局。
+
+最近一场结果独立保存在 `xinfang_demo_last_result_v1`，不改写原项目的角色关卡、教程或结局存档。

@@ -36,6 +36,9 @@ const GEM_BURST_COLORS: Record<GemType, string[]> = {
   trauma: ['#ef4444', '#dc2626', '#f87171', '#991b1b'],
 };
 
+const GEM_NAMES = { seduction: '诱惑', hypnosis: '催眠', empathy: '伪装', desire: '欲望', trauma: '创伤' };
+const SPECIAL_NAMES = { none: '', line_h: '横向冲击针', line_v: '纵向冲击针', bomb: '心灵炸弹', eye: '恶女之瞳' };
+
 export const GameBoard: React.FC<GameBoardProps> = ({
   grid,
   selectedPos,
@@ -188,7 +191,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   return (
     <div className="relative flex flex-col items-center justify-center p-3 rounded-2xl bg-zinc-950/95 border border-zinc-800 shadow-2xl backdrop-blur-md">
       {/* Top Banner: Combo Cascade Real-Time Feedback (Iconic Steam Mirror Style) */}
-      <div className="w-full flex items-center justify-between px-2 mb-2 min-h-[40px]">
+      <div className="demo-board-top w-full flex items-center justify-between gap-2 px-2 mb-2 min-h-[40px]">
         <div className="flex items-center gap-2">
           {comboCount > 1 ? (
             <div className="flex items-center gap-2 animate-in zoom-in-95 duration-150">
@@ -204,7 +207,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
           ) : (
             <div className="text-xs text-zinc-400 flex items-center gap-2 font-mono">
               <Zap className="w-3.5 h-3.5 text-amber-400" />
-              <span>1消=🛡️1 · 连消=🛡️+1 · 连锁=⚡x2~x3</span>
+              <span>每颗命中 1 点 · 连锁追加伤害</span>
             </div>
           )}
         </div>
@@ -295,7 +298,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         </div>
 
         {/* 7x7 Grid */}
-        <div className="grid grid-cols-7 gap-2">
+        <div className="grid grid-cols-7 gap-2" role="group" aria-label="7行7列宝石棋盘">
           {grid.map((row, r) =>
             row.map((gem, c) => {
               const isSelected = selectedPos?.row === r && selectedPos?.col === c;
@@ -304,8 +307,21 @@ export const GameBoard: React.FC<GameBoardProps> = ({
               const isMatching = gem?.isMatching;
 
               return (
-                <div
+                <button
+                  type="button"
                   key={gem ? gem.id : `empty_${r}_${c}`}
+                  data-row={r}
+                  data-col={c}
+                  data-gem={gem?.type}
+                  data-special={gem?.special}
+                  data-locked={gem?.locked ? 'true' : 'false'}
+                  aria-label={`第${r + 1}行第${c + 1}列 ${gem ? GEM_NAMES[gem.type] : '空'} ${gem ? SPECIAL_NAMES[gem.special] : ''}${gem?.locked ? ' 已锁定' : ''}`}
+                  aria-pressed={isSelected}
+                  disabled={isProcessing}
+                  onKeyDown={event => {
+                    const delta = { ArrowLeft: [0, -1], ArrowRight: [0, 1], ArrowUp: [-1, 0], ArrowDown: [1, 0] }[event.key];
+                    if (delta) { event.preventDefault(); const next = event.currentTarget.parentElement?.querySelector<HTMLButtonElement>(`[data-row="${r + delta[0]}"][data-col="${c + delta[1]}"]`); next?.focus(); }
+                  }}
                   onClick={() => handleTileClick(r, c)}
                   draggable={!gem?.locked && !isProcessing}
                   onDragStart={(e) => handleDragStart(e, r, c)}
@@ -337,7 +353,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                   {isMatching && (
                     <div className="absolute inset-0 rounded-xl bg-white/70 pointer-events-none animate-ping" />
                   )}
-                </div>
+                </button>
               );
             })
           )}

@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>剧情调用三消示例</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#09090b;color:#f4f4f5;font-family:"Microsoft YaHei",system-ui,sans-serif}main{max-width:1280px;margin:30px auto;padding:0 20px}header{display:flex;justify-content:space-between;gap:20px;align-items:center;padding-bottom:20px;border-bottom:1px solid #27272a}h1{font-size:20px;font-weight:600}a{color:#fda4af;font-size:12px}section{padding:65px 35px;border:1px solid #3f3f46;border-radius:12px;margin-top:25px;line-height:2;background:#111113}h2{font-size:28px;font-weight:500}p{font-size:13px;color:#a1a1aa}small{font-size:10px;color:#fb7185;letter-spacing:2px}button{background:#be123c;border:1px solid #e11d48;border-radius:8px;padding:13px 22px;color:white;cursor:pointer;margin-top:18px}iframe{width:100%;height:960px;border:1px solid #27272a;border-radius:10px;margin-top:25px;background:#09090b}pre{white-space:pre-wrap;word-break:break-word;color:#d4d4d8;font-size:11px;line-height:1.8}details{margin-top:25px;font-size:12px}#status{font-size:11px;color:#a1a1aa}select{background:#18181b;border:1px solid #52525b;color:white;padding:10px;border-radius:7px;font:inherit}label{font-size:12px;color:#d4d4d8}button:focus-visible,a:focus-visible{outline:2px solid #fb7185;outline-offset:4px}[hidden]{display:none!important}@media(max-width:700px){section{padding:35px 24px}iframe{height:1370px}h2{font-size:23px}}
+</style></head>
+<body><main>
+<header><h1>剧情片段 · 三消调用演示</h1><a href="/">打开完整演示</a></header>
+<p id="status" role="status">前置剧情位置已就绪</p>
+<section id="before"><small>前置剧情视频预留</small><h2>话说到一半，他忽然沉默。</h2><p>影片到达交互点时，暂停剧情并调用下方独立玩法。这里用按钮模拟剧情播放器发起调用。</p><label>带入的剧情选择 <select id="approach"><option value="patient">先给他一点余地 · 初始 SP +25</option><option value="direct">直面他的回避 · 第一重心防 -20%</option></select></label><br><button id="start">进入心防交锋</button></section>
+<iframe id="battle" title="心防交锋独立玩法" hidden allow="autoplay"></iframe>
+<section id="after" hidden><small>后续剧情视频预留</small><h2 id="outcome"></h2><p id="continuation"></p><details><summary>查看返回的场景结果</summary><pre id="result"></pre></details><button id="again">重新演示</button></section>
+</main><script type="module">
+const frame = document.getElementById('battle');
+const before = document.getElementById('before');
+const after = document.getElementById('after');
+const status = document.getElementById('status');
+const seen = new Set();
+const completed = new Map();
+document.getElementById('start').onclick = () => {
+  before.hidden = true; after.hidden = true; frame.hidden = false;
+  status.textContent = '剧情暂停，加载三消玩法';
+  const params = new URLSearchParams({ embed: '1', approach: document.getElementById('approach').value });
+  frame.src = '/?' + params;
+};
+window.addEventListener('message', event => {
+  // Always verify BOTH origin and the actual child window in the film player.
+  if (event.origin !== location.origin || event.source !== frame.contentWindow) return;
+  const { type, payload } = event.data ?? {};
+  if (type === 'xinfang:ready') status.textContent = '三消进行中，剧情等待结果';
+  if (!payload || payload.version !== 1) return;
+  if (type === 'xinfang:complete') {
+    completed.set(payload.runId, payload);
+    status.textContent = payload.outcome === 'success' ? `交锋成功，展示击破进度 +${payload.progressDelta}，等待继续剧情` : '交锋结束，等待继续剧情';
+    return;
+  }
+  // Completion records the result; continuation is the explicit handoff AFTER the reward screen.
+  if (type !== 'xinfang:continue' || !completed.has(payload.runId) || seen.has(payload.runId)) return;
+  seen.add(payload.runId);
+  frame.hidden = true; after.hidden = false;
+  frame.src = 'about:blank';
+  const titles = { success: '会谈继续', partial: '带着保留，继续对话', failure: '这场会谈暂时中断' };
+  document.getElementById('outcome').textContent = titles[payload.outcome] ?? '会谈结束';
+  document.getElementById('continuation').textContent = '这里按 continuationId 播放你的承接视频：' + payload.continuationId;
+  document.getElementById('result').textContent = JSON.stringify(payload, null, 2);
+  after.dataset.storyNode = payload.nextNodeId;
+  const progress = document.createElement('p');
+  progress.id = 'node-progress';
+  progress.textContent = `心防击破进度 ${payload.breakProgress}/100 · 下一剧情节点：${payload.nextNodeId}`;
+  document.getElementById('node-progress')?.remove();
+  document.getElementById('outcome').after(progress);
+  status.textContent = '已收到一次场景结果，回到后续剧情';
+});
+document.getElementById('again').onclick = () => { after.hidden = true; before.hidden = false; status.textContent = '前置剧情位置已就绪'; };
+</script></body></html>
