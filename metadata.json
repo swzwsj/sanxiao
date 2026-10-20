@@ -1,0 +1,6 @@
+{
+  "name": "心防崩解：心理医生的支配契约",
+  "description": "参考Mirror模式的暗黑心理博弈与三消解谜恋爱养成游戏。化身表面高知大女主、实则腹黑疯批的心理医生陆星河，瓦解裴氏兄弟的心防值，体验策略消除与连锁破防快感。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

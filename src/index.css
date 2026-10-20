@@ -1,0 +1,74 @@
+@import "tailwindcss";
+
+@keyframes defenseShake {
+  0% { transform: translateX(0) translateY(0); }
+  15% { transform: translateX(-4px) translateY(1px); }
+  30% { transform: translateX(4px) translateY(-1px); }
+  45% { transform: translateX(-3px) translateY(1px); }
+  60% { transform: translateX(3px) translateY(-1px); }
+  75% { transform: translateX(-1px) translateY(0); }
+  100% { transform: translateX(0) translateY(0); }
+}
+
+.animate-defense-shake {
+  animation: defenseShake 0.28s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+@keyframes pulseGlow {
+  0%, 100% { opacity: 0.6; filter: drop-shadow(0 0 10px rgba(244, 63, 94, 0.4)); }
+  50% { opacity: 1; filter: drop-shadow(0 0 22px rgba(244, 63, 94, 0.8)); }
+}
+
+.animate-pulse-glow {
+  animation: pulseGlow 2s infinite ease-in-out;
+}
+
+@keyframes stampImpact {
+  0% { transform: scale(2.6); opacity: 0; filter: blur(6px); }
+  55% { transform: scale(0.92); opacity: 1; filter: blur(0); }
+  75% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+
+.animate-stamp-impact {
+  animation: stampImpact 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+}
+
+@keyframes rippleShockwave {
+  0% { transform: scale(0.8); opacity: 0.9; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+
+.animate-ripple-shockwave {
+  animation: rippleShockwave 0.8s ease-out forwards;
+}
+
+@keyframes vortexSpin {
+  0% { transform: rotate(0deg) scale(1); }
+  50% { transform: rotate(180deg) scale(1.15); }
+  100% { transform: rotate(360deg) scale(1); }
+}
+
+.animate-vortex-spin {
+  animation: vortexSpin 28s linear infinite;
+}
+
+@keyframes chainRattle {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  25% { transform: translateY(-2px) rotate(1deg); }
+  75% { transform: translateY(2px) rotate(-1deg); }
+}
+
+.animate-chain-rattle {
+  animation: chainRattle 3.5s ease-in-out infinite;
+}
+
+@keyframes abyssWarp {
+  0%, 100% { filter: hue-rotate(0deg) contrast(1.1); transform: scale(1); }
+  50% { filter: hue-rotate(-20deg) contrast(1.3); transform: scale(1.03); }
+}
+
+.animate-abyss-warp {
+  animation: abyssWarp 4.5s ease-in-out infinite;
+}
+
