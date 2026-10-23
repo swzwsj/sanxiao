@@ -1,6 +1,6 @@
 # 心防崩解 三消互动演示
 
-本项目提供一段可放在剧情中段调用的三消会谈：前置剧情位置 → 点击剧情选项 → 震屏并向两侧裂开 → 双人立绘与台词框 → 快速三消与一次中途选择 → 心防击破 +20 → 后续剧情节点。演示集中在陆星河与裴予迟的一次会谈；完成本场不会直接解锁人物最终结局。
+本项目提供一段可放在剧情中段调用的三消会谈：前置剧情位置 → 点击剧情选项 → 震屏并向两侧裂开 → 双人立绘与台词框 → 快速三消与阶段剧情 → 心防击破 +20 → 后续剧情节点。演示集中在陆星河与裴予迟的一次会谈；完成本场不会直接解锁人物最终结局。
 
 公开演示：[打开完整片段](https://xinfang-story-match3.muddyflint6.chatgpt.site/)。独立游戏：[直接调用](https://xinfang-story-match3.muddyflint6.chatgpt.site/?embed=1)。[剧情播放器嵌入示例](https://xinfang-story-match3.muddyflint6.chatgpt.site/embed-demo.html)。
 
@@ -55,15 +55,15 @@ npm.cmd run preview -- --host 127.0.0.1 --port 3000 --strictPort
 | 恶女之瞳 + 冲击针／炸弹 | 该颜色所在位置逐一触发行列扫射／3×3 爆破 |
 | 恶女之瞳 + 恶女之瞳 | 清除全盘 |
 
-反馈由每轮唯一的消除事件驱动，重复消除同一位置也会播放。视觉区分碎光、冲击针光束、炸弹冲击圈、清色连接光线和特殊宝石合成提示；补落宝石显示位移动画。音效使用 Web Audio 本地合成，包含普通命中、四消和弦、五消琶音、六消以上低频、连锁升调、扫射、爆破和共鸣音色，并通过统一压缩器控制叠加音量。支持静音、触屏滑动交换和减少动态效果。
+反馈由每轮唯一的消除事件驱动，重复消除同一位置也会播放。消除提示由独立的 `EliminationNotice` 组件呈现：透明、无底板的描边字、连锁数字和短促切线动效，不拦截棋盘点击；合成提示同样无底板。视觉区分碎光、冲击针光束、炸弹冲击圈、清色连接光线和特殊宝石合成提示；补落宝石显示位移动画。音效使用 Web Audio 本地合成，包含普通命中、四消和弦、五消琶音、六消以上低频、连锁升调、扫射、爆破和共鸣音色，并通过统一压缩器控制叠加音量。支持静音、触屏滑动交换和减少动态效果。
 
 每次有效交换后可释放 1 个技能。技能消耗 SP、不消耗步数、不推进敌方回合，且解除全部锁链。每 4 次有效交换触发敌方反制；锁链可通过相邻消除解除，心火在 3 次有效交换后爆发，每颗扣 18 从容。
 
-首次破防暂停战斗，玩家可继续追问或给对方主动权；效果与选择会分别计入战斗和剧情记录。最后一步先完成连锁和阶段选择，再判断胜负；最后一重心防归零后也会完成剩余补落和消除，确保结算时没有残留匹配。
+消除期间不出现选项弹窗，也不等待剧情确认。突破心防后，立绘旁的台词框切换到该阶段剧情，默认自动播放，可切换手动或点击“下一句”。推进台词不暂停连锁、不消耗资源，也不伪造剧情选项结果。阶段台词配置在 `src/data/demo.ts` 的 `phases[].dialogue`，每句包含 `speaker` 和 `text`。最后一步会先完成连锁再判断胜负；最后一重心防归零后也会完成剩余补落和消除，确保结算时没有残留匹配。
 
 成功后先展示独立的“心防击破”结算，进度从 0 增长到 20/100；点击“进入后续剧情”后进入“未说完的话”节点。`src/data/demo.ts` 中的 `breakProgress.initial / successGain / maximum` 与 `nextNode.id / title` 控制进度和节点。重试同一场始终从配置的初始进度计算，未达成不增加进度；跨节点累计和场景奖励去重由主影游管理。
 
-需要限时场景时可在 `src/data/demo.ts` 设置 `timeLimitSeconds`，或用 `/?timed=60` 预览。时钟只统计可操作时间；剧情、帮助、暂停、隐藏页面及自动消除演出不扣时。操作用时独立记录，不用剩余时限反推。
+需要限时场景时可在 `src/data/demo.ts` 设置 `timeLimitSeconds`，或用 `/?timed=60` 预览。时钟只统计可操作时间；战前对话、帮助、暂停、隐藏页面及自动消除演出不扣时。战斗中的阶段台词随交锋播放，不暂停可操作时间。操作用时独立记录，不用剩余时限反推。
 
 ## 视频预留位置
 
@@ -118,7 +118,7 @@ window.addEventListener('message', (event) => {
 | `outcome` | `success` 全部破防；`partial` 至少完成一重但中断；`failure` 未完成第一重 |
 | `reason` | `defense_broken`、`turn_limit`、`time_limit`、`composure` |
 | `grade` | S/A/B/C 战斗表现，与人物最终结局分开 |
-| `approach`、`response` | 开场与中途选择；未到中途时 response 为 null |
+| `approach`、`response` | 开场选择；response 为旧接入保留字段，当前始终为 null，战斗中没有选项 |
 | `phasesCleared`、`turnsUsed`、`turnsRemaining` | 本场进展与步数 |
 | `maxCombo`、`composure`、`activeTimeMs` | 最大连锁、剩余从容、可操作时间 |
 | `storyFlags` | 可交给剧情系统的选择与结果标记 |
@@ -126,6 +126,6 @@ window.addEventListener('message', (event) => {
 | `progressBefore`、`progressDelta`、`breakProgress` | 本场前进度、实际增加值、完成后进度；默认成功为 0、20、20 |
 | `nextNodeId` | 下一剧情节点，默认 `consultation-next` |
 
-成功后根据中途选择返回 `consultation.continue.open` 或 `consultation.continue.tense`；部分达成返回 `consultation.continue.guarded`；未达成返回 `consultation.interrupted`。这些标识用于本场场景，未代表人物最终结局。
+成功后根据开场选择返回 `consultation.continue.open`（patient）或 `consultation.continue.tense`（direct）；部分达成返回 `consultation.continue.guarded`；未达成返回 `consultation.interrupted`。这些标识用于本场场景，未代表人物最终结局。
 
 最近一场结果独立保存在 `xinfang_demo_last_result_v1`，不改写原项目的角色关卡、教程或结局存档。

@@ -1,17 +1,17 @@
 import type { ClearFeedback, Gem, Grid, MatchResult, PlayerSkill, Position, SpecialCombination } from '../types/game';
-import type { Approach, BattleResult, BattleState, DemoConfig, FinishReason, Response } from '../types/demo';
+import type { Approach, BattleResult, BattleState, BattleStory, DemoConfig, FinishReason } from '../types/demo';
 import { encounterProgress } from './progress';
 import { applyGravityAndRefill, chainMultiplier, COMBINATION_NAMES, createGem, createInitialGrid, findMatches, findPossibleSwap, getSwapEffect, hasPossibleMoves, inBounds, isAdjacent, matchRewards, positionKey, reshuffleGrid, resolveClear, seededRandom, swapGems } from '../utils/match3Engine';
 
 type Options = { animationMs?: number; onSound?: (kind: 'swap' | 'match' | 'break' | 'invalid' | 'skill', combo: number) => void; onClear?: (feedback: ClearFeedback) => void };
 
-/** Owns one encounter. Generation checks invalidate every old animation/dialogue on reset or finish. */
+/** Owns one encounter. Generation and story IDs invalidate stale animations and text callbacks. */
 export class BattleController {
   private state: BattleState;
   private listeners = new Set<() => void>();
   private generation = 0;
   private aborter = new AbortController();
-  private resumeDialogue: (() => void) | null = null;
+  private storyId = 0;
   private random: () => number;
   private feedbackId = 0;
   private pendingVictory = false;
@@ -34,7 +34,7 @@ export class BattleController {
       remainingMs: this.config.timeLimitSeconds === null ? null : this.config.timeLimitSeconds * 1000,
       activeTimeMs: 0, approach: 'patient', response: null,
       maxCombo: 1, combo: 1, streak: 0, feedback: null, totalCleared: 0, turnsEarned: 0, multiplier: 1, bonusTitle: '三消打开话题，四消以上合成特殊宝石',
-      message: '“陆医生，今天也要把我的话都拆开来听吗？”', lastDamage: 0,
+      message: '“陆医生，今天也要把我的话都拆开来听吗？”', story: null, lastDamage: 0,
       vulnerabilityTurns: 0, skillUsedThisTurn: false, enemyCooldown: 4, hint: null, result: null,
     };
   }
@@ -47,14 +47,12 @@ export class BattleController {
     this.generation++;
     this.aborter.abort();
     this.aborter = new AbortController();
-    this.resumeDialogue?.();
-    this.resumeDialogue = null;
   }
   dispose() { this.cancel(); this.listeners.clear(); }
   reset() { this.cancel(); this.pendingVictory = false; this.pendingComposureFailure = false; this.random = seededRandom(this.config.seed); this.state = this.initialState(); this.listeners.forEach(listener => listener()); }
   start(approach: Approach) {
     if (this.state.status !== 'ready') return;
-    this.patch({ status: 'playing', approach, defense: approach === 'direct' ? Math.max(1, Math.round(this.config.phases[0].defense * .8)) : this.config.phases[0].defense, sp: approach === 'patient' ? 50 : 25, message: approach === 'patient' ? '他没有接话，却也没有再起身离开。' : '他收起笑意，终于迎上你的目光。' });
+    this.patch({ status: 'playing', approach, story: this.storyFor(0), defense: approach === 'direct' ? Math.max(1, Math.round(this.config.phases[0].defense * .8)) : this.config.phases[0].defense, sp: approach === 'patient' ? 50 : 25, message: approach === 'patient' ? '他没有接话，却也没有再起身离开。' : '他收起笑意，终于迎上你的目光。' });
   }
   setPaused(paused: boolean) { if (this.state.status !== 'finished') this.patch({ paused }); }
   advanceTime(ms: number) {
@@ -83,28 +81,24 @@ export class BattleController {
     if (defense > 0) return 'hit' as const;
     if (this.state.phaseIndex === this.config.phases.length - 1) { this.pendingVictory = true; return 'won' as const; }
     const phaseIndex = this.state.phaseIndex + 1;
-    this.patch({ phaseIndex, defense: this.config.phases[phaseIndex].defense, sp: Math.min(100, this.state.sp + 20), remainingMs: this.state.remainingMs === null ? null : Math.min((this.config.timeLimitSeconds! + 15) * 1000, this.state.remainingMs + 5000), message: this.config.phases[phaseIndex].quote });
+    this.patch({ phaseIndex, story: this.storyFor(phaseIndex), defense: this.config.phases[phaseIndex].defense, sp: Math.min(100, this.state.sp + 20), remainingMs: this.state.remainingMs === null ? null : Math.min((this.config.timeLimitSeconds! + 15) * 1000, this.state.remainingMs + 5000), message: this.config.phases[phaseIndex].quote });
     this.options.onSound?.('break', this.state.combo);
     return 'phase' as const;
   }
 
-  private async phaseDialogue(token: number) {
-    if (this.state.response || this.state.phaseIndex < 1 || !this.live(token)) return;
-    this.addObstacles('lock', 3);
-    this.patch({ status: 'dialogue', hint: null });
-    await new Promise<void>(resolve => { this.resumeDialogue = resolve; });
+  private storyFor(phaseIndex: number): BattleStory {
+    const phase = this.config.phases[phaseIndex];
+    return { id: ++this.storyId, phaseIndex, lineIndex: 0, lines: phase.dialogue?.length ? phase.dialogue : [{ speaker: 'target', text: phase.quote || '“……继续吧，我在听。”' }] };
   }
 
-  chooseResponse(response: Response) {
-    if (this.state.status !== 'dialogue' || this.state.response) return;
-    this.patch({ response, status: 'resolving', message: response === 'press' ? '“……你还真是一点退路都不给。”' : '“如果我说了，你会认真听吗？”' });
-    if (response === 'press') {
-      this.patch({ composure: Math.max(0, this.state.composure - 8) });
-      this.damage(6);
-      if (this.state.composure === 0) this.pendingComposureFailure = true;
-    } else this.patch({ composure: Math.min(100, this.state.composure + 20), sp: Math.min(100, this.state.sp + 15) });
-    this.resumeDialogue?.();
-    this.resumeDialogue = null;
+  advanceStory(id: number, lineIndex: number) {
+    const story = this.state.story;
+    if (!story || story.id !== id || story.lineIndex !== lineIndex || story.lineIndex >= story.lines.length - 1 || this.state.paused || this.state.status === 'finished') return;
+    this.patch({ story: { ...story, lineIndex: story.lineIndex + 1 } });
+  }
+
+  private phaseObstacles() {
+    if (this.state.phaseIndex === 1) this.addObstacles('lock', 3);
   }
 
   private async cascades(token: number, initial: MatchResult[], forced: Position[] = [], boosted = false, combination: SpecialCombination | null = null, allowTurnReward = false) {
@@ -139,10 +133,7 @@ export class BattleController {
       if (!await this.wait(token, .6)) return;
       this.patch({ grid: applyGravityAndRefill(this.state.grid, this.random).newGrid });
       if (!await this.wait(token, 1.3)) return;
-      if (hit === 'phase') {
-        await this.phaseDialogue(token);
-        if (!this.live(token)) return;
-      }
+      if (hit === 'phase') this.phaseObstacles();
       matches = findMatches(this.state.grid);
       trigger = [];
       combination = null;
@@ -191,7 +182,7 @@ export class BattleController {
       const p = candidates.splice(Math.floor(this.random() * candidates.length), 1)[0];
       grid[p.row][p.col] = { ...grid[p.row][p.col]!, ...(kind === 'lock' ? { locked: true } : { fireCountdown: 3 }) };
     }
-    this.patch({ grid, ...(this.state.status !== 'dialogue' ? { message: kind === 'lock' ? '他再次回避了问题。相邻消除可解除心结锁链，技能可解除全部锁链。' : '情绪开始升温。请在 3 次有效交换内消除心火，否则从容度 -18。' } : {}) });
+    this.patch({ grid, message: kind === 'lock' ? '他再次回避了问题。相邻消除可解除心结锁链，技能可解除全部锁链。' : '情绪开始升温。请在 3 次有效交换内消除心火，否则从容度 -18。' });
   }
 
   private async hazards(token: number) {
@@ -229,7 +220,7 @@ export class BattleController {
       for (let i = 0; i < 4 && candidates.length; i++) { const p = candidates.splice(Math.floor(this.random() * candidates.length), 1)[0]; grid[p.row][p.col] = { ...grid[p.row][p.col]!, type: 'seduction' }; }
       this.patch({ grid, message: '移情操纵：4 颗普通宝石转化为诱惑宝石，额外造成 4 点心防伤害。' });
       const hit = this.damage(4);
-      if (hit === 'phase') await this.phaseDialogue(token);
+      if (hit === 'phase') this.phaseObstacles();
     } else if (skill.id === 'trauma_regression') {
       forced = Array.from({ length: 9 }, (_, i) => ({ row: 2 + Math.floor(i / 3), col: 2 + i % 3 }));
       this.patch({ vulnerabilityTurns: 3, message: '创伤回溯：中央爆破，接下来 3 次有效交换伤害 +40%。' });
@@ -242,7 +233,7 @@ export class BattleController {
       const damage = Math.max(10, Math.round(lost * .35));
       this.patch({ message: `恶女之吻：造成 ${damage} 点心防伤害。` });
       const hit = this.damage(damage);
-      if (hit === 'phase') await this.phaseDialogue(token);
+      if (hit === 'phase') this.phaseObstacles();
     }
     if (!this.live(token)) return;
     await this.cascades(token, findMatches(this.state.grid), forced);
@@ -266,7 +257,7 @@ export class BattleController {
     const outcome = reason === 'defense_broken' ? 'success' : s.phaseIndex > 0 ? 'partial' : 'failure';
     const score = Math.round((s.turnsRemaining / this.config.turns) * 35 + s.composure * .3 + Math.min(5, s.maxCombo) * 7);
     const grade = outcome === 'success' ? score >= 80 ? 'S' : score >= 65 ? 'A' : score >= 45 ? 'B' : 'C' : outcome === 'partial' ? 'B' : 'C';
-    const continuationId = outcome === 'success' ? s.response === 'press' ? 'consultation.continue.tense' : 'consultation.continue.open' : outcome === 'partial' ? 'consultation.continue.guarded' : 'consultation.interrupted';
+    const continuationId = outcome === 'success' ? s.approach === 'direct' ? 'consultation.continue.tense' : 'consultation.continue.open' : outcome === 'partial' ? 'consultation.continue.guarded' : 'consultation.interrupted';
     const result: BattleResult = { version: 1, runId: s.runId, battleId: this.config.id, sceneId: this.config.sceneId, outcome, reason, grade, approach: s.approach, response: s.response, phasesCleared: outcome === 'success' ? this.config.phases.length : s.phaseIndex, turnsUsed: s.turnsUsed, turnsRemaining: s.turnsRemaining, maxCombo: s.maxCombo, composure: s.composure, activeTimeMs: Math.round(s.activeTimeMs), storyFlags: [`approach:${s.approach}`, ...(s.response ? [`response:${s.response}`] : []), `consultation:${outcome}`], continuationId, ...encounterProgress(this.config, outcome === 'success'), nextNodeId: this.config.nextNode.id };
     this.patch({ status: 'finished', paused: false, hint: null, result });
     this.cancel();

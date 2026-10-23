@@ -30,7 +30,7 @@ export function BreakthroughReward({ result, config, onContinue, onRetry }: { re
       <p className="breakthrough-label">击破进度</p>
       <div className="breakthrough-progress-heading"><span>裴予迟 · 心防击破进度</span><strong data-testid="break-progress">{progress}<small> / {config.breakProgress.maximum}</small></strong></div>
       <div className="breakthrough-progress" role="progressbar" aria-label="心防击破进度" aria-valuemin={0} aria-valuemax={config.breakProgress.maximum} aria-valuenow={progress}><div style={{ transform: `scaleX(${progress / config.breakProgress.maximum})` }} /></div>
-      <p className="breakthrough-quote">{result.response === 'press' ? '“……好，我不躲。你继续问。”' : '“这一次，我会把话说完。”'}</p>
+      <p className="breakthrough-quote">{result.approach === 'direct' ? '“……好，我不躲。你继续问。”' : '“这一次，我会把话说完。”'}</p>
       <div className="breakthrough-next"><span>后续剧情节点</span><strong>{config.nextNode.title}</strong><small>本场评级 {result.grade} · {result.turnsUsed} 次交换 · 最大 {result.maxCombo} 连锁</small></div>
       <div className="demo-result-actions"><button className="demo-secondary" disabled={!ready} onClick={onRetry}><RotateCcw size={14} />再试一次</button><button ref={next} className="demo-primary" disabled={!ready} onClick={onContinue}>进入后续剧情<ArrowRight size={16} /></button></div>
     </div>

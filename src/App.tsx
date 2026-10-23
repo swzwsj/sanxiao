@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowRight, Check, CircleHelp, Film, Pause, Play, RotateCcw, Shield, Sparkles, Timer, Volume2, VolumeX } from 'lucide-react';
 import { GameBoard } from './components/GameBoard';
 import { MatchRules } from './components/MatchRules';
@@ -12,7 +12,7 @@ import { BreakthroughReward } from './components/BreakthroughReward';
 import { captureEncounterFrame, EncounterTransition } from './components/EncounterTransition';
 import type { EncounterFrame } from './components/EncounterTransition';
 import './styles/cinematic.css';
-import { APPROACHES, DEMO_CHARACTER, DEMO_CONFIG, RESPONSES } from './data/demo';
+import { APPROACHES, DEMO_CHARACTER, DEMO_CONFIG } from './data/demo';
 import { BattleController } from './game/BattleController';
 import { useBattle } from './game/useBattle';
 import { filmEvent } from './integration/filmBridge';
@@ -36,6 +36,7 @@ export default function App() {
     if (kind === 'skill') soundManager.playSkillCast();
   }, onClear: feedback => soundManager.playClear(feedback) }));
   const state = useBattle(controller);
+  const advanceStory = useCallback((id: number, lineIndex: number) => controller.advanceStory(id, lineIndex), [controller]);
   const [screen, setScreen] = useState<'before' | 'choice' | 'intro' | 'battle' | 'after'>(embedded ? 'intro' : 'before');
   const [approach, setApproach] = useState<Approach | null>(null);
   const appRoot = useRef<HTMLDivElement>(null);
@@ -115,20 +116,18 @@ export default function App() {
           <p className="demo-board-tip">{state.vulnerabilityTurns > 0 ? `创伤回溯生效 · 接下来 ${state.vulnerabilityTurns} 次有效交换伤害 +40%` : state.turnsUsed === 0 ? '首局提示：中央的「恶女之瞳」与相邻宝石交换，可清除全盘同色宝石。' : '直线五消以上返还 1 步 · 连续命中 3 次起 SP +3 · 洞察免费'}</p>
           <SkillsBar currentSp={state.sp} maxSp={100} onCastSkill={skill => { setSelected(null); void controller.cast(skill); }} isProcessing={busy || state.turnsUsed === 0 || state.skillUsedThisTurn} composure={state.composure} maxComposure={100} />
           <div className="demo-battle-note"><span>{state.turnsUsed === 0 ? '首次有效交换后可使用技能' : state.skillUsedThisTurn ? '本回合技能已用，交换后可再次释放' : '每次有效交换后可释放 1 个技能'}</span><span>已突破 {state.result?.phasesCleared ?? state.phaseIndex} / {config.phases.length} 重心防</span></div>
-        </section><DemoStage state={state} config={config} /></div>
+        </section><DemoStage state={state} config={config} onNextStory={advanceStory} /></div>
       </>}
 
       {screen === 'after' && <FilmSlot position="after" config={config} result={state.result} onContinue={() => { controller.reset(); setScreen('before'); setApproach(null); setPaused(false); }} />}
     </main>
 
-    {state.status === 'dialogue' && screen === 'battle' && <DemoDialog title="他没有再用玩笑带过" wide><div className="demo-dialog-body"><p className="demo-dialog-speaker">裴予迟</p><p className="demo-dialog-quote">“如果我不想回答呢？你是不是也会替我下结论？”</p><p className="demo-muted">第一重心防已突破。此刻，交锋暂停，选择如何继续。</p><div className="demo-response-choices">{RESPONSES.map(item => <button key={item.id} className="demo-choice" onClick={() => controller.chooseResponse(item.id)}><span><strong>{item.title}</strong><span className="demo-choice-line">{item.line}</span><small>{item.effect}</small></span><ArrowRight size={16} /></button>)}</div></div></DemoDialog>}
-
     {state.result?.outcome === 'success' && screen === 'battle' && <BreakthroughReward key={state.result.runId} result={state.result} config={config} onContinue={() => continueStory(state.result!)} onRetry={() => restart(false)} />}
-    {state.result && state.result.outcome !== 'success' && screen === 'battle' && <DemoDialog title={outcomes[state.result.outcome]}><div className="demo-dialog-body demo-result"><span className={`demo-grade grade-${state.result.grade}`}>{state.result.grade}</span><p className="demo-result-summary">{state.result.outcome === 'partial' ? '他的防线已经松动，但有些话仍被保留。你可以带着这份距离继续剧情。' : '这次没有打开话题。可以重新尝试，也可以接受这场会谈的结果。'}</p><p className="demo-muted">{reasons[state.result.reason]} 本次未获得击破进度。</p><div className="demo-result-stats"><div><strong>{state.result.turnsUsed}</strong><span>有效交换</span></div><div><strong>{state.result.maxCombo}</strong><span>最大连锁</span></div><div><strong>{state.result.composure}</strong><span>剩余从容</span></div><div><strong>{displayTime(state.result.activeTimeMs)}</strong><span>操作用时</span></div></div><div className="demo-choice-record"><span>你的选择</span><strong>{APPROACHES.find(item => item.id === state.result!.approach)?.title}</strong>{state.result.response && <strong>{RESPONSES.find(item => item.id === state.result!.response)?.title}</strong>}</div><div className="demo-result-actions"><button className="demo-secondary" onClick={() => restart(false)}><RotateCcw size={15} />再试一次</button><button className="demo-primary" onClick={() => continueStory(state.result!)}><Film size={15} />回到剧情<ArrowRight size={15} /></button></div></div></DemoDialog>}
+    {state.result && state.result.outcome !== 'success' && screen === 'battle' && <DemoDialog title={outcomes[state.result.outcome]}><div className="demo-dialog-body demo-result"><span className={`demo-grade grade-${state.result.grade}`}>{state.result.grade}</span><p className="demo-result-summary">{state.result.outcome === 'partial' ? '他的防线已经松动，但有些话仍被保留。你可以带着这份距离继续剧情。' : '这次没有打开话题。可以重新尝试，也可以接受这场会谈的结果。'}</p><p className="demo-muted">{reasons[state.result.reason]} 本次未获得击破进度。</p><div className="demo-result-stats"><div><strong>{state.result.turnsUsed}</strong><span>有效交换</span></div><div><strong>{state.result.maxCombo}</strong><span>最大连锁</span></div><div><strong>{state.result.composure}</strong><span>剩余从容</span></div><div><strong>{displayTime(state.result.activeTimeMs)}</strong><span>操作用时</span></div></div><div className="demo-choice-record"><span>你的选择</span><strong>{APPROACHES.find(item => item.id === state.result!.approach)?.title}</strong></div><div className="demo-result-actions"><button className="demo-secondary" onClick={() => restart(false)}><RotateCcw size={15} />再试一次</button><button className="demo-primary" onClick={() => continueStory(state.result!)}><Film size={15} />回到剧情<ArrowRight size={15} /></button></div></div></DemoDialog>}
 
     {paused && !help && state.status === 'playing' && <DemoDialog title="会谈已暂停" onClose={() => setPaused(false)}><div className="demo-dialog-body"><p className="demo-muted">步数、时限与棋盘都会保留。</p><button className="demo-primary" onClick={() => setPaused(false)}><Play size={16} />继续交锋</button></div></DemoDialog>}
 
-    {help && <DemoDialog title="心防交锋 · 玩法规则" onClose={() => setHelp(false)} wide><div className="demo-dialog-body demo-help"><p>交换相邻宝石，凑成横向或纵向三个同色。有效交换消耗 1 步，连续掉落形成连锁，只计算为这 1 步。</p><div className="demo-gem-legend">{([{ type: 'seduction', text: '诱惑 · 充能 SP' }, { type: 'hypnosis', text: '催眠 · 从容 +1' }, { type: 'empathy', text: '伪装 · 从容 +2' }, { type: 'desire', text: '欲望 · SP +2' }, { type: 'trauma', text: '创伤 · 额外伤害' }] as const).map(item => <div key={item.type}><GemIcon type={item.type} size={34} /><span>{item.text}</span></div>)}</div><MatchRules /><p><strong>技能与障碍</strong><br />每次有效交换后可释放 1 个技能；技能只消耗 SP，不消耗步数，并解除所有锁链。锁链也可通过相邻消除解除；心火在 3 次有效交换后爆发，每颗扣除 18 从容。无效交换不扣步数，扣除 4 从容。</p><p><strong>怎样结束本场</strong><br />突破所有心防即达成目标；最后一步会先完成所有连锁，再判胜负。步数／时限耗尽或从容度归零，会按已突破的阶段返回本场结果。剧情选择与战斗评级分别记录。</p><p className="demo-muted">当前{config.timeLimitSeconds === null ? '采用步数制，没有实时倒计时' : `采用 ${config.timeLimitSeconds} 秒限时模式`}。阅读规则、剧情选择、暂停与消除演出均不扣时。洞察免费使用。</p><button className="demo-primary" onClick={() => setHelp(false)}>明白了<Check size={16} /></button></div></DemoDialog>}
+    {help && <DemoDialog title="心防交锋 · 玩法规则" onClose={() => setHelp(false)} wide><div className="demo-dialog-body demo-help"><p>交换相邻宝石，凑成横向或纵向三个同色。有效交换消耗 1 步，连续掉落形成连锁，只计算为这 1 步。</p><div className="demo-gem-legend">{([{ type: 'seduction', text: '诱惑 · 充能 SP' }, { type: 'hypnosis', text: '催眠 · 从容 +1' }, { type: 'empathy', text: '伪装 · 从容 +2' }, { type: 'desire', text: '欲望 · SP +2' }, { type: 'trauma', text: '创伤 · 额外伤害' }] as const).map(item => <div key={item.type}><GemIcon type={item.type} size={34} /><span>{item.text}</span></div>)}</div><MatchRules /><p><strong>技能与障碍</strong><br />每次有效交换后可释放 1 个技能；技能只消耗 SP，不消耗步数，并解除所有锁链。锁链也可通过相邻消除解除；心火在 3 次有效交换后爆发，每颗扣除 18 从容。无效交换不扣步数，扣除 4 从容。</p><p><strong>怎样结束本场</strong><br />突破所有心防即达成目标；最后一步会先完成所有连锁，再判胜负。步数／时限耗尽或从容度归零，会按已突破的阶段返回本场结果。剧情选择与战斗评级分别记录。</p><p className="demo-muted">当前{config.timeLimitSeconds === null ? '采用步数制，没有实时倒计时' : `采用 ${config.timeLimitSeconds} 秒限时模式`}。战前对话、规则、暂停与消除演出均不扣时。战斗台词不打断操作与计时，洞察免费使用。</p><button className="demo-primary" onClick={() => setHelp(false)}>明白了<Check size={16} /></button></div></DemoDialog>}
     {encounter && <EncounterTransition frame={encounter} onComplete={() => { setEncounter(null); entryLocked.current = false; window.scrollTo({ top: 0, behavior: 'instant' }); }} />}
   </div>;
 }

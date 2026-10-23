@@ -3,6 +3,7 @@ import type { CSSProperties, DragEvent, PointerEvent } from 'react';
 import { ArrowDown, ArrowRight, Eye, Flame, Lightbulb, Sparkles, Zap } from 'lucide-react';
 import type { ClearFeedback, Grid, Position } from '../types/game';
 import { GemIcon } from './GemIcon';
+import { EliminationNotice } from './EliminationNotice';
 import './GameBoard.css';
 
 interface GameBoardProps {
@@ -36,7 +37,6 @@ function ClearEffects({ feedback }: { feedback: ClearFeedback }) {
       return <i key={`${index}-${part}`} className={`clear-shard ${part % 2 ? 'is-round' : ''}`} style={{ left: `${center(pos.col)}%`, top: `${center(pos.row)}%`, '--shard-color': COLORS[type], '--dx': `${Math.cos(angle) * distance}px`, '--dy': `${Math.sin(angle) * distance}px`, '--rotation': `${index * 37 + part * 80}deg`, '--delay': `${part * 12}ms` } as CSSProperties} />;
     }))}
     {feedback.created.map(({ pos, special }, index) => <div key={`made-${index}`} className="clear-creation" style={{ left: `${center(pos.col)}%`, top: `${center(pos.row)}%` }}><Sparkles size={22} /><span>{SPECIAL_NAMES[special]}</span></div>)}
-    <div className="clear-callout"><strong>{feedback.chain > 1 ? <>{feedback.chain}<small>连锁</small></> : null}</strong><span>{feedback.title}</span><small>{feedback.extraTurn ? '额外步数 +1' : feedback.damage ? `心防 −${feedback.damage}` : '连锁结算中'}</small></div>
   </div>;
 }
 
@@ -96,7 +96,7 @@ export function GameBoard({ grid, selectedPos, onSelectPos, onSwap, isProcessing
             {gem && <div key={`${gem.id}-${row}-${col}`} className={`gem-motion ${moving ? 'is-moving' : ''}`} style={{ '--from-x': `${fromX * 115}%`, '--from-y': `${fromY * 115}%` } as CSSProperties}><GemIcon type={gem.type} special={gem.special} locked={gem.locked} fireCountdown={gem.fireCountdown} size={46} /></div>}
           </button>;
         }))}
-      </div>{feedback && <ClearEffects key={feedback.id} feedback={feedback} />}
+      </div>{feedback && <><ClearEffects key={`fx-${feedback.id}`} feedback={feedback} /><EliminationNotice key={`notice-${feedback.id}`} feedback={feedback} /></>}
     </div></div>
     <div className="match-pattern-key" aria-label="特殊消除速查"><span><ArrowRight size={13} /><ArrowDown size={13} />四消 · 清行／列</span><span><Sparkles size={13} />L / T · 炸弹</span><span><Eye size={13} />五消以上 · 清色 +1步</span></div>
   </div>;

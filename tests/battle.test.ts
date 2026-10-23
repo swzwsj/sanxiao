@@ -7,9 +7,6 @@ import { findMatches, findPossibleSwap, getSwapEffect, hasPossibleMoves, resolve
 import type { ClearFeedback, Position } from '../src/types/game';
 
 const make = (extra = {}) => new BattleController({ ...DEMO_CONFIG, ...extra }, { animationMs: 0 });
-function autoDialogue(controller: BattleController) {
-  return controller.subscribe(() => { if (controller.getSnapshot().status === 'dialogue') queueMicrotask(() => controller.chooseResponse('reassure')); });
-}
 function bestMove(controller: BattleController): Position[] {
   const grid = controller.getSnapshot().grid;
   let best: Position[] = [], score = -1;
@@ -62,15 +59,14 @@ test('reset during an animation cancels all writes from the old encounter', asyn
 
 test('a completed phase and an exhausted turn budget return a local partial outcome', async () => {
   const c = make({ turns: 1, phases: [{ name: 'one', defense: 1, quote: '' }, { name: 'two', defense: 10000, quote: '' }] });
-  const unsubscribe = autoDialogue(c); c.start('patient');
+  c.start('patient');
   const [from, to] = findPossibleSwap(c.getSnapshot().grid)!;
   await c.swap(from, to);
   const result = c.getSnapshot().result!;
   assert.equal(result.outcome, 'partial'); assert.equal(result.reason, 'turn_limit');
-  assert.equal(result.phasesCleared, 1); assert.equal(result.response, 'reassure');
+  assert.equal(result.phasesCleared, 1); assert.equal(result.response, null);
   assert.equal(result.progressDelta, 0); assert.equal(result.breakProgress, 0);
-  assert.deepEqual(result.storyFlags, ['approach:patient', 'response:reassure', 'consultation:partial']);
-  unsubscribe();
+  assert.deepEqual(result.storyFlags, ['approach:patient', 'consultation:partial']);
 });
 
 test('a timed encounter finishes once; later input cannot revive it', async () => {
@@ -79,7 +75,7 @@ test('a timed encounter finishes once; later input cannot revive it', async () =
   const state = c.getSnapshot();
   assert.equal(state.result?.reason, 'time_limit'); assert.equal(state.result?.outcome, 'failure');
   assert.equal(state.result?.progressDelta, 0); assert.equal(state.result?.breakProgress, 0);
-  await c.swap({ row: 3, col: 3 }, { row: 3, col: 4 }); c.chooseResponse('press');
+  await c.swap({ row: 3, col: 3 }, { row: 3, col: 4 }); c.advanceStory(state.story!.id, 0);
   assert.deepEqual(c.getSnapshot(), state);
 });
 
@@ -105,15 +101,15 @@ test('trauma skill supplies the promised buff and skills never spend turns', asy
   assert.equal(c.getSnapshot().vulnerabilityTurns, 2); assert.equal(c.getSnapshot().turnsUsed, 2);
 });
 
-test('demo can be completed with public actions, a choice and finite resources', async () => {
-  const c = make(); autoDialogue(c); c.start('patient');
+test('demo completes with public actions and finite resources without any mid-battle choice', async () => {
+  const c = make(); c.start('patient');
   for (let action = 0; action < 30 && c.getSnapshot().status !== 'finished'; action++) {
     if (c.getSnapshot().turnsUsed > 0 && !c.getSnapshot().skillUsedThisTurn && c.getSnapshot().sp >= 90) await c.cast(PLAYER_SKILLS[3]);
     else if (c.getSnapshot().turnsUsed > 0 && !c.getSnapshot().skillUsedThisTurn && c.getSnapshot().sp >= 45) await c.cast(PLAYER_SKILLS[1]);
     else { const [from, to] = bestMove(c); assert.ok(from && to); await c.swap(from, to); }
   }
   const result = c.getSnapshot().result!;
-  assert.equal(result?.outcome, 'success'); assert.equal(result.response, 'reassure');
+  assert.equal(result?.outcome, 'success'); assert.equal(result.response, null);
   assert.ok(result.turnsUsed > 0 && result.turnsUsed <= DEMO_CONFIG.turns);
   assert.equal(result.phasesCleared, 3);
 });
@@ -126,15 +122,42 @@ test('only one skill is available after each valid swap', async () => {
   const used = c.getSnapshot(); await c.cast(PLAYER_SKILLS[0]); assert.equal(c.getSnapshot(), used);
 });
 
-test('mid-battle dialogue freezes a timed encounter and reset cancels its pending continuation', async () => {
-  const c = make({ timeLimitSeconds: 30, phases: [{ name: 'one', defense: 1, quote: '' }, { name: 'two', defense: 10000, quote: '' }] });
+test('phase story updates without interrupting cascades or waiting for a dialogue choice', async () => {
+  const c = make({ timeLimitSeconds: 30, phases: [{ ...DEMO_CONFIG.phases[0], defense: 1 }, { ...DEMO_CONFIG.phases[1], defense: 10000 }] });
+  const statuses: string[] = []; c.subscribe(() => statuses.push(c.getSnapshot().status));
   c.start('patient');
-  const dialogue = new Promise<void>(resolve => { const off = c.subscribe(() => { if (c.getSnapshot().status === 'dialogue') { off(); resolve(); } }); });
   const [from, to] = findPossibleSwap(c.getSnapshot().grid)!;
-  const action = c.swap(from, to); await dialogue;
-  const time = c.getSnapshot().remainingMs; c.advanceTime(60000); assert.equal(c.getSnapshot().remainingMs, time);
-  c.reset(); c.start('direct'); const expected = structuredClone(c.getSnapshot());
-  await action; assert.deepEqual(c.getSnapshot(), expected);
+  await c.swap(from, to);
+  assert.equal(c.getSnapshot().status, 'playing'); assert.equal(c.getSnapshot().phaseIndex, 1);
+  assert.equal(statuses.includes('dialogue'), false);
+  assert.deepEqual(c.getSnapshot().story?.lines, DEMO_CONFIG.phases[1].dialogue);
+  assert.equal(findMatches(c.getSnapshot().grid).length, 0);
+  const time = c.getSnapshot().remainingMs!; c.advanceTime(1000); assert.equal(c.getSnapshot().remainingMs, time - 1000);
+});
+
+test('advancing portrait dialogue changes no battle resources; stale or duplicate callbacks cannot skip lines', () => {
+  const c = make(); c.start('patient');
+  const { story, ...before } = c.getSnapshot();
+  c.advanceStory(story!.id, 0);
+  const { story: next, ...after } = c.getSnapshot();
+  assert.deepEqual(after, before); assert.equal(next?.lineIndex, 1);
+  const expected = structuredClone(c.getSnapshot());
+  c.advanceStory(story!.id, 0); assert.deepEqual(c.getSnapshot(), expected);
+  c.reset(); c.start('direct'); const restarted = structuredClone(c.getSnapshot());
+  c.advanceStory(story!.id, 0); assert.deepEqual(c.getSnapshot(), restarted);
+});
+
+test('portrait dialogue can advance during an active elimination without blocking or ending it', async () => {
+  const c = new BattleController({ ...DEMO_CONFIG, phases: [{ ...DEMO_CONFIG.phases[0], defense: 10000 }] }, { animationMs: 10 });
+  c.start('patient');
+  const story = c.getSnapshot().story!;
+  const [from, to] = findPossibleSwap(c.getSnapshot().grid)!;
+  const action = c.swap(from, to);
+  assert.equal(c.getSnapshot().status, 'resolving');
+  c.advanceStory(story.id, 0);
+  assert.equal(c.getSnapshot().story?.lineIndex, 1); assert.equal(c.getSnapshot().status, 'resolving');
+  await action;
+  assert.equal(c.getSnapshot().status, 'playing'); assert.equal(findMatches(c.getSnapshot().grid).length, 0);
 });
 
 test('retry produces a new attempt without accumulating the same scene reward twice', async () => {

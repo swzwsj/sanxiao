@@ -48,11 +48,7 @@
 .clear-resonance { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; animation: resonance-fade .65s ease-out both; }
 .clear-resonance line { stroke: #fde68a; stroke-width: 2; stroke-dasharray: 800; animation: resonance-draw .35s ease-out both; }
 .clear-creation { position: absolute; display: flex; align-items: center; flex-direction: column; transform: translate(-50%,-50%); color: #fde68a; animation: creation-rise .8s ease-out both; }
-.clear-creation span { padding: 3px 7px; margin-top: 5px; border-radius: 4px; background: #171014ed; font-size: 10px; white-space: nowrap; }
-.clear-callout { position: absolute; left: 50%; top: 36%; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 24px; border-radius: 8px; background: #101015e8; color: #fef3c7; white-space: nowrap; animation: clear-callout .8s ease-out both; font-size: 16px; font-weight: 600; box-shadow: 0 8px 25px #0007; }
-.clear-callout>strong { font-size: 36px; line-height: 1.1; font-variant-numeric: tabular-nums; }
-.clear-callout>strong small { font-size: 12px; margin-left: 6px; }
-.clear-callout>small { font-size: 11px; font-weight: 400; color: #fda4af; }
+.clear-creation span { margin-top: 5px; background: none; font-size: 11px; font-weight: 700; white-space: nowrap; text-shadow: 0 2px 2px #713f12,0 3px 8px #09090b; }
 @keyframes gem-travel { from { transform: translate(var(--from-x),var(--from-y)); } to { transform: translate(0,0); } }
 @keyframes gem-clear { 0% { transform: scale(1); opacity: 1; } 35% { transform: scale(1.13); filter: brightness(1.6); opacity: 1; } 100% { transform: scale(.35); opacity: 0; } }
 @keyframes gem-locked { 20%,60% { transform: translateX(-3px); } 40%,80% { transform: translateX(3px); } }
@@ -62,7 +58,6 @@
 @keyframes resonance-fade { 0%,30% { opacity: .85; } 100% { opacity: 0; } }
 @keyframes resonance-draw { from { stroke-dashoffset: 800; } to { stroke-dashoffset: 0; } }
 @keyframes creation-rise { 0% { opacity: 0; margin-top: 5px; } 20%,55% { opacity: 1; margin-top: -10px; } 100% { opacity: 0; margin-top: -22px; } }
-@keyframes clear-callout { 0% { opacity: 0; transform: translate(-50%,-40%) scale(.94); } 18%,65% { opacity: 1; transform: translate(-50%,-50%) scale(1); } 100% { opacity: 0; transform: translate(-50%,-65%) scale(1); } }
 @media(max-width:740px) {
   .match-board { padding: 12px; }
   .match-board-status strong { font-size: 13px; }
@@ -73,11 +68,9 @@
   .match-board-frame { padding: 9px; }
   .match-pattern-key { gap: 7px; font-size: 8px; }
   .match-pattern-key svg { width: 10px; height: 10px; }
-  .clear-callout { padding: 10px 14px; font-size: 13px; }
 }
 @media(prefers-reduced-motion:reduce) {
   .gem-motion.is-moving,.match-tile.is-clearing .gem-motion,.match-tile.is-shaking { animation: none !important; }
   .match-tile.is-clearing { outline-color: #fde68a; }
   .clear-shard,.clear-beam,.clear-shockwave,.clear-resonance,.clear-creation { display: none; }
-  .clear-callout { animation: none !important; transform: translate(-50%,-50%); }
 }
