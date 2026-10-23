@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { BattleController } from '../src/game/BattleController';
 import { DEMO_CONFIG } from '../src/data/demo';
 import { PLAYER_SKILLS } from '../src/data/characters';
-import { findPossibleSwap, getSwapEffect, resolveClear } from '../src/utils/match3Engine';
-import type { Position } from '../src/types/game';
+import { findMatches, findPossibleSwap, getSwapEffect, hasPossibleMoves, resolveClear, seededRandom } from '../src/utils/match3Engine';
+import type { ClearFeedback, Position } from '../src/types/game';
 
 const make = (extra = {}) => new BattleController({ ...DEMO_CONFIG, ...extra }, { animationMs: 0 });
 function autoDialogue(controller: BattleController) {
@@ -159,4 +159,67 @@ test('story progress starts from the film value and caps at its configured maxim
   const result = c.getSnapshot().result!;
   assert.equal(result.progressBefore, 85); assert.equal(result.progressDelta, 15); assert.equal(result.breakProgress, 100);
   assert.equal(result.nextNodeId, 'film-scene-02');
+});
+
+test('regression: victory waits for every refill cascade, including the seed-1 residual match', async () => {
+  const waves: ClearFeedback[] = [];
+  const c = new BattleController({ ...DEMO_CONFIG, seed: 1, phases: [{ name: 'test', defense: 1, quote: '' }] }, { animationMs: 0, onClear: wave => waves.push(wave) });
+  c.start('patient');
+  const [from, to] = findPossibleSwap(c.getSnapshot().grid)!;
+  await c.swap(from, to);
+  assert.equal(c.getSnapshot().result?.outcome, 'success');
+  assert.ok(waves.length >= 2, 'The old implementation stopped after the first wave');
+  assert.equal(findMatches(c.getSnapshot().grid).length, 0);
+  assert.equal(c.getSnapshot().grid.flat().filter(Boolean).length, 49);
+  assert.equal(c.getSnapshot().result?.maxCombo, waves.length);
+  assert.equal(new Set(waves.map(wave => wave.id)).size, waves.length);
+});
+
+test('multiple seeds, skills and hazard turns always return a full stable playable board', async () => {
+  for (let seed = 0; seed < 16; seed++) {
+    const c = make({ seed, turns: 30, phases: [{ name: 'test', defense: 100000, quote: '' }] });
+    const random = seededRandom(seed + 301);
+    c.start('patient');
+    for (let action = 0; action < 10; action++) {
+      if (c.getSnapshot().status === 'finished') break;
+      const grid = c.getSnapshot().grid, possible: Position[][] = [];
+      for (let row = 0; row < 7; row++) for (let col = 0; col < 7; col++) for (const to of [{ row, col: col + 1 }, { row: row + 1, col }]) if (getSwapEffect(grid, { row, col }, to)) possible.push([{ row, col }, to]);
+      const [from, to] = possible[Math.floor(random() * possible.length)];
+      await c.swap(from, to);
+      if (c.getSnapshot().status === 'playing' && action % 2 === 0) await c.cast(PLAYER_SKILLS[action % PLAYER_SKILLS.length]);
+      assert.equal(findMatches(c.getSnapshot().grid).length, 0, `seed ${seed}, action ${action}`);
+      assert.equal(c.getSnapshot().grid.flat().filter(Boolean).length, 49);
+      if (c.getSnapshot().status === 'playing') assert.equal(hasPossibleMoves(c.getSnapshot().grid), true);
+    }
+  }
+});
+
+test('five-match extra turns are limited to one per player swap; skills cannot award turns', async () => {
+  let awarded = 0;
+  for (let seed = 0; seed < 30 && !awarded; seed++) {
+    const waves: ClearFeedback[] = [];
+    const c = new BattleController({ ...DEMO_CONFIG, seed, phases: [{ name: 'test', defense: 100000, quote: '' }] }, { animationMs: 0, onClear: wave => waves.push(wave) });
+    c.start('patient');
+    for (let move = 0; move < 8 && !awarded; move++) {
+      const before = c.getSnapshot().turnsRemaining, priorEarned = c.getSnapshot().turnsEarned;
+      const [from, to] = bestMove(c); await c.swap(from, to);
+      const earned = c.getSnapshot().turnsEarned - priorEarned;
+      assert.ok(earned <= 1); assert.equal(c.getSnapshot().turnsRemaining, before - 1 + earned);
+      awarded += earned;
+      const skillBudget = c.getSnapshot().turnsRemaining; await c.cast(PLAYER_SKILLS[0]);
+      assert.equal(c.getSnapshot().turnsRemaining, skillBudget);
+    }
+  }
+  assert.ok(awarded > 0, 'The scenario must exercise an actual five-match reward');
+});
+
+test('consecutive valid swaps build a streak; an invalid swap resets it without spending a turn', async () => {
+  const c = make({ phases: [{ name: 'test', defense: 100000, quote: '' }] }); c.start('patient');
+  for (let i = 1; i <= 3; i++) { const [from, to] = findPossibleSwap(c.getSnapshot().grid)!; await c.swap(from, to); assert.equal(c.getSnapshot().streak, i); }
+  const turns = c.getSnapshot().turnsRemaining;
+  const grid = c.getSnapshot().grid;
+  let invalid: Position[] | undefined;
+  for (let row = 0; row < 7; row++) for (let col = 0; col < 6; col++) if (!grid[row][col]?.locked && !grid[row][col + 1]?.locked && !getSwapEffect(grid, { row, col }, { row, col: col + 1 })) invalid = [{ row, col }, { row, col: col + 1 }];
+  assert.ok(invalid); await c.swap(invalid[0], invalid[1]);
+  assert.equal(c.getSnapshot().streak, 0); assert.equal(c.getSnapshot().turnsRemaining, turns);
 });

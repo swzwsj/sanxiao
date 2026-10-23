@@ -1,364 +1,103 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Grid, Position, GemType } from '../types/game';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type { CSSProperties, DragEvent, PointerEvent } from 'react';
+import { ArrowDown, ArrowRight, Eye, Flame, Lightbulb, Sparkles, Zap } from 'lucide-react';
+import type { ClearFeedback, Grid, Position } from '../types/game';
 import { GemIcon } from './GemIcon';
-import { Lightbulb, Flame, Zap, Sparkles } from 'lucide-react';
-
-interface DynamicParticle {
-  id: string;
-  x: number; // percentage (0 to 100)
-  y: number; // percentage (0 to 100)
-  dx: number; // displacement in px
-  dy: number;
-  color: string;
-  size: number;
-  shape: 'star' | 'circle' | 'shard' | 'ring';
-  rotation: number;
-}
+import './GameBoard.css';
 
 interface GameBoardProps {
-  grid: Grid;
-  selectedPos: Position | null;
-  onSelectPos: (pos: Position) => void;
-  onSwap: (from: Position, to: Position) => void;
-  isProcessing: boolean;
-  onHint: () => void;
-  hintPositions: Position[] | null;
-  comboCount: number;
-  lastMultiplier: number;
-  bonusTitle: string;
+  grid: Grid; selectedPos: Position | null; onSelectPos: (pos: Position) => void;
+  onSwap: (from: Position, to: Position) => void; isProcessing: boolean; onHint: () => void;
+  hintPositions: Position[] | null; comboCount: number; lastMultiplier: number; bonusTitle: string;
+  feedback?: ClearFeedback | null; streak?: number;
 }
-
-const GEM_BURST_COLORS: Record<GemType, string[]> = {
-  seduction: ['#f43f5e', '#fb7185', '#fda4af', '#be123c'],
-  hypnosis: ['#818cf8', '#a78bfa', '#c084fc', '#4f46e5'],
-  empathy: ['#2dd4bf', '#34d399', '#6ee7b7', '#059669'],
-  desire: ['#fbbf24', '#f59e0b', '#fde047', '#d97706'],
-  trauma: ['#ef4444', '#dc2626', '#f87171', '#991b1b'],
-};
-
+const COLORS = { seduction: '#fb7185', hypnosis: '#38bdf8', empathy: '#34d399', desire: '#fbbf24', trauma: '#c084fc' };
 const GEM_NAMES = { seduction: '诱惑', hypnosis: '催眠', empathy: '伪装', desire: '欲望', trauma: '创伤' };
 const SPECIAL_NAMES = { none: '', line_h: '横向冲击针', line_v: '纵向冲击针', bomb: '心灵炸弹', eye: '恶女之瞳' };
+const same = (a: Position | null, b: Position) => a?.row === b.row && a?.col === b.col;
+const center = (n: number) => (n + .5) / 7 * 100;
 
-export const GameBoard: React.FC<GameBoardProps> = ({
-  grid,
-  selectedPos,
-  onSelectPos,
-  onSwap,
-  isProcessing,
-  onHint,
-  hintPositions,
-  comboCount,
-  lastMultiplier,
-  bonusTitle,
-}) => {
-  const [shakePos, setShakePos] = useState<Position | null>(null);
-  const [draggedPos, setDraggedPos] = useState<Position | null>(null);
-  const [activeParticles, setActiveParticles] = useState<DynamicParticle[]>([]);
-  const prevMatchingKeyRef = useRef<string>('');
+/** A resolution ID, rather than coordinates, triggers every repeated clear. */
+function ClearEffects({ feedback }: { feedback: ClearFeedback }) {
+  const [visible, setVisible] = useState(true);
+  useEffect(() => { const timer = window.setTimeout(() => setVisible(false), 850); return () => clearTimeout(timer); }, []);
+  if (!visible) return null;
+  const big = feedback.kind !== 'three' || feedback.chain > 1;
+  const cells = feedback.cells.filter((_, index) => index % Math.max(1, Math.ceil(feedback.cells.length / 24)) === 0);
+  const origin = feedback.combination?.origin ?? feedback.activated.find(item => item.special === 'eye')?.pos;
+  return <div className={`clear-fx ${big ? 'is-strong' : ''}`} data-testid="clear-effects" data-wave={feedback.id} aria-hidden="true">
+    {origin && <svg className="clear-resonance" viewBox="0 0 700 700">{feedback.cells.map(({ pos }, i) => <line key={i} x1={(origin.col + .5) * 100} y1={(origin.row + .5) * 100} x2={(pos.col + .5) * 100} y2={(pos.row + .5) * 100} />)}</svg>}
+    {feedback.activated.slice(0, 8).map(({ pos, special }, i) => special === 'line_h' || special === 'line_v'
+      ? <i key={`beam-${i}`} className={`clear-beam ${special}`} style={{ '--cell-x': `${center(pos.col)}%`, '--cell-y': `${center(pos.row)}%` } as CSSProperties} />
+      : <i key={`blast-${i}`} className={`clear-shockwave ${special}`} style={{ left: `${center(pos.col)}%`, top: `${center(pos.row)}%` }} />)}
+    {cells.flatMap(({ pos, type }, index) => Array.from({ length: big ? 4 : 3 }, (_, part) => {
+      const angle = part / (big ? 4 : 3) * Math.PI * 2 + index * .7;
+      const distance = big ? 35 + index % 3 * 12 : 25;
+      return <i key={`${index}-${part}`} className={`clear-shard ${part % 2 ? 'is-round' : ''}`} style={{ left: `${center(pos.col)}%`, top: `${center(pos.row)}%`, '--shard-color': COLORS[type], '--dx': `${Math.cos(angle) * distance}px`, '--dy': `${Math.sin(angle) * distance}px`, '--rotation': `${index * 37 + part * 80}deg`, '--delay': `${part * 12}ms` } as CSSProperties} />;
+    }))}
+    {feedback.created.map(({ pos, special }, index) => <div key={`made-${index}`} className="clear-creation" style={{ left: `${center(pos.col)}%`, top: `${center(pos.row)}%` }}><Sparkles size={22} /><span>{SPECIAL_NAMES[special]}</span></div>)}
+    <div className="clear-callout"><strong>{feedback.chain > 1 ? <>{feedback.chain}<small>连锁</small></> : null}</strong><span>{feedback.title}</span><small>{feedback.extraTurn ? '额外步数 +1' : feedback.damage ? `心防 −${feedback.damage}` : '连锁结算中'}</small></div>
+  </div>;
+}
 
-  // Detect matching gems and spawn dynamic burst particles at eliminated gem positions
-  useEffect(() => {
-    const matchingGems: { row: number; col: number; type: GemType; special?: string }[] = [];
-    grid.forEach((row, r) => {
-      row.forEach((gem, c) => {
-        if (gem?.isMatching) {
-          matchingGems.push({ row: r, col: c, type: gem.type, special: gem.special });
-        }
-      });
-    });
-
-    if (matchingGems.length === 0) return;
-
-    const currentKey = matchingGems.map(g => `${g.row},${g.col}`).join('|');
-    if (currentKey === prevMatchingKeyRef.current) return;
-    prevMatchingKeyRef.current = currentKey;
-
-    const newParticles: DynamicParticle[] = [];
-    const isHighCombo = comboCount >= 3;
-    const particleCountPerGem = isHighCombo ? 14 : 8;
-
-    matchingGems.forEach(gem => {
-      const centerX = ((gem.col + 0.5) / 7) * 100;
-      const centerY = ((gem.row + 0.5) / 7) * 100;
-      const palette = GEM_BURST_COLORS[gem.type] || ['#fbbf24', '#f43f5e', '#ffffff'];
-
-      // Add central shockwave ring for high combo
-      if (isHighCombo) {
-        newParticles.push({
-          id: `ring_${gem.row}_${gem.col}_${Date.now()}_${Math.random()}`,
-          x: centerX,
-          y: centerY,
-          dx: 0,
-          dy: 0,
-          color: palette[0],
-          size: 48,
-          shape: 'ring',
-          rotation: 0,
-        });
-      }
-
-      for (let i = 0; i < particleCountPerGem; i++) {
-        const angle = (Math.PI * 2 * i) / particleCountPerGem + (Math.random() - 0.5) * 0.4;
-        const speed = isHighCombo ? 35 + Math.random() * 45 : 20 + Math.random() * 30;
-        const color = isHighCombo && Math.random() > 0.6 ? '#fbbf24' : palette[i % palette.length];
-        const shape = isHighCombo && i % 2 === 0 ? 'star' : i % 3 === 0 ? 'shard' : 'circle';
-
-        newParticles.push({
-          id: `p_${gem.row}_${gem.col}_${i}_${Date.now()}_${Math.random()}`,
-          x: centerX,
-          y: centerY,
-          dx: Math.cos(angle) * speed,
-          dy: Math.sin(angle) * speed,
-          color,
-          size: isHighCombo ? 6 + Math.random() * 6 : 4 + Math.random() * 4,
-          shape,
-          rotation: Math.random() * 360,
-        });
-      }
-    });
-
-    setActiveParticles(prev => [...prev.slice(-30), ...newParticles]);
-
-    const timer = setTimeout(() => {
-      setActiveParticles([]);
-    }, 600);
-
-    return () => clearTimeout(timer);
-  }, [grid, comboCount]);
-
-  const handleTileClick = (row: number, col: number) => {
-    if (isProcessing) return;
-
-    const clickedGem = grid[row]?.[col];
-    if (clickedGem?.locked) {
-      setShakePos({ row, col });
-      setTimeout(() => setShakePos(null), 400);
-      return;
-    }
-
-    if (!selectedPos) {
-      onSelectPos({ row, col });
-      return;
-    }
-
-    if (selectedPos.row === row && selectedPos.col === col) {
-      onSelectPos({ row: -1, col: -1 });
-      return;
-    }
-
-    const prevGem = grid[selectedPos.row]?.[selectedPos.col];
-    if (prevGem?.locked) {
-      onSelectPos({ row: -1, col: -1 });
-      return;
-    }
-
-    onSwap(selectedPos, { row, col });
+export function GameBoard({ grid, selectedPos, onSelectPos, onSwap, isProcessing, onHint, hintPositions, comboCount, lastMultiplier, feedback, streak = 0 }: GameBoardProps) {
+  const [shake, setShake] = useState<Position | null>(null);
+  const dragged = useRef<Position | null>(null);
+  const touchStart = useRef<{ pos: Position; x: number; y: number } | null>(null);
+  const suppressClick = useRef(false);
+  const lockTimer = useRef<number>(0);
+  const previousPositions = useRef(new Map(grid.flatMap((line, row) => line.flatMap((gem, col) => gem ? [[gem.id, { row, col }] as const] : []))));
+  useLayoutEffect(() => { previousPositions.current = new Map(grid.flatMap((line, row) => line.flatMap((gem, col) => gem ? [[gem.id, { row, col }] as const] : []))); }, [grid]);
+  useEffect(() => () => clearTimeout(lockTimer.current), []);
+  const shakeLocked = (pos: Position) => { setShake(pos); clearTimeout(lockTimer.current); lockTimer.current = window.setTimeout(() => setShake(null), 300); };
+  const select = (pos: Position) => {
+    if (suppressClick.current) { suppressClick.current = false; return; }
+    if (isProcessing || !grid[pos.row]?.[pos.col]) return;
+    if (grid[pos.row][pos.col]?.locked) { shakeLocked(pos); return; }
+    if (!selectedPos) onSelectPos(pos);
+    else if (same(selectedPos, pos)) onSelectPos({ row: -1, col: -1 });
+    else onSwap(selectedPos, pos);
   };
-
-  const handleDragStart = (e: React.DragEvent, row: number, col: number) => {
-    if (isProcessing) return;
-    const gem = grid[row]?.[col];
-    if (gem?.locked) {
-      e.preventDefault();
-      return;
-    }
-    setDraggedPos({ row, col });
-    e.dataTransfer.setData('text/plain', `${row},${col}`);
+  const startDrag = (event: DragEvent, pos: Position) => {
+    if (isProcessing || grid[pos.row][pos.col]?.locked) { event.preventDefault(); return; }
+    dragged.current = pos; event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', `${pos.row},${pos.col}`);
   };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
+  const drop = (event: DragEvent, pos: Position) => {
+    event.preventDefault();
+    if (!isProcessing && dragged.current) { if (grid[pos.row][pos.col]?.locked) shakeLocked(pos); else onSwap(dragged.current, pos); }
+    dragged.current = null;
   };
-
-  const handleDrop = (e: React.DragEvent, targetRow: number, targetCol: number) => {
-    e.preventDefault();
-    if (isProcessing || !draggedPos) return;
-
-    const targetGem = grid[targetRow]?.[targetCol];
-    if (targetGem?.locked) {
-      setShakePos({ row: targetRow, col: targetCol });
-      setTimeout(() => setShakePos(null), 400);
-      setDraggedPos(null);
-      return;
-    }
-
-    if (draggedPos.row !== targetRow || draggedPos.col !== targetCol) {
-      onSwap(draggedPos, { row: targetRow, col: targetCol });
-    }
-    setDraggedPos(null);
+  const finishSwipe = (event: PointerEvent) => {
+    const start = touchStart.current; touchStart.current = null;
+    if (!start || isProcessing) return;
+    const dx = event.clientX - start.x, dy = event.clientY - start.y;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 22) return;
+    const to = { row: start.pos.row + (Math.abs(dy) > Math.abs(dx) ? Math.sign(dy) : 0), col: start.pos.col + (Math.abs(dx) >= Math.abs(dy) ? Math.sign(dx) : 0) };
+    if (to.row < 0 || to.row > 6 || to.col < 0 || to.col > 6) return;
+    suppressClick.current = true; onSwap(start.pos, to);
   };
-
-  return (
-    <div className="relative flex flex-col items-center justify-center p-3 rounded-2xl bg-zinc-950/95 border border-zinc-800 shadow-2xl backdrop-blur-md">
-      {/* Top Banner: Combo Cascade Real-Time Feedback (Iconic Steam Mirror Style) */}
-      <div className="demo-board-top w-full flex items-center justify-between gap-2 px-2 mb-2 min-h-[40px]">
-        <div className="flex items-center gap-2">
-          {comboCount > 1 ? (
-            <div className="flex items-center gap-2 animate-in zoom-in-95 duration-150">
-              <div className="px-3 py-1 rounded-xl bg-gradient-to-r from-red-600 via-rose-600 to-amber-500 text-white font-serif font-black text-sm tracking-wide shadow-[0_0_20px_rgba(244,63,94,0.6)] flex items-center gap-1.5 animate-bounce">
-                <Flame className="w-4 h-4 text-amber-200" />
-                <span>COMBO x{comboCount}</span>
-              </div>
-              <span className="text-xs font-semibold px-2 py-0.5 rounded-lg bg-rose-950/90 border border-rose-500/50 text-rose-200 font-mono shadow-sm flex items-center gap-1">
-                <span>{bonusTitle}</span>
-                <span className="text-amber-400 font-bold">({lastMultiplier.toFixed(1)}x)</span>
-              </span>
-            </div>
-          ) : (
-            <div className="text-xs text-zinc-400 flex items-center gap-2 font-mono">
-              <Zap className="w-3.5 h-3.5 text-amber-400" />
-              <span>每颗命中 1 点 · 连锁追加伤害</span>
-            </div>
-          )}
-        </div>
-
-        {/* Action button: Hint */}
-        <button
-          onClick={onHint}
-          disabled={isProcessing}
-          className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-xl bg-zinc-900 border border-zinc-700/80 text-zinc-200 hover:text-amber-300 hover:border-amber-500/60 transition-all disabled:opacity-40 shadow-sm shrink-0 active:scale-95 cursor-pointer"
-          title="心理洞察提示"
-        >
-          <Lightbulb className="w-3.5 h-3.5 text-amber-400" />
-          <span className="font-medium hidden sm:inline">洞察</span>
-        </button>
-      </div>
-
-      {/* Grid Container (Mirror Beveled Metallic Frame) */}
-      <div className="relative p-3 sm:p-3.5 rounded-2xl bg-gradient-to-b from-zinc-900 via-zinc-950 to-black border-4 border-zinc-800/90 shadow-[0_0_30px_rgba(0,0,0,0.95)] ring-1 ring-zinc-700/50 overflow-visible">
-        {/* Dynamic Elimination Particle Layer (Overlaying Board) */}
-        <div className="absolute inset-0 pointer-events-none z-40 overflow-visible">
-          {activeParticles.map(p => {
-            if (p.shape === 'ring') {
-              return (
-                <div
-                  key={p.id}
-                  className="absolute rounded-full border-2 border-amber-400 animate-ping pointer-events-none"
-                  style={{
-                    left: `${p.x}%`,
-                    top: `${p.y}%`,
-                    width: `${p.size}px`,
-                    height: `${p.size}px`,
-                    marginLeft: `-${p.size / 2}px`,
-                    marginTop: `-${p.size / 2}px`,
-                    borderColor: p.color,
-                    boxShadow: `0 0 15px ${p.color}`,
-                  }}
-                />
-              );
-            }
-
-            return (
-              <div
-                key={p.id}
-                className="absolute pointer-events-none transition-all duration-500 ease-out"
-                style={{
-                  left: `${p.x}%`,
-                  top: `${p.y}%`,
-                  transform: `translate(${p.dx}px, ${p.dy}px) rotate(${p.rotation}deg)`,
-                  opacity: 0,
-                  transitionProperty: 'transform, opacity',
-                  transitionDuration: '500ms',
-                }}
-              >
-                {p.shape === 'star' ? (
-                  <Sparkles
-                    className="animate-spin"
-                    style={{
-                      width: `${p.size * 1.5}px`,
-                      height: `${p.size * 1.5}px`,
-                      color: p.color,
-                      filter: `drop-shadow(0 0 6px ${p.color})`,
-                    }}
-                  />
-                ) : p.shape === 'shard' ? (
-                  <div
-                    style={{
-                      width: `${p.size * 1.8}px`,
-                      height: `${p.size}px`,
-                      backgroundColor: p.color,
-                      clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)',
-                      boxShadow: `0 0 8px ${p.color}`,
-                    }}
-                  />
-                ) : (
-                  <div
-                    className="rounded-full"
-                    style={{
-                      width: `${p.size}px`,
-                      height: `${p.size}px`,
-                      backgroundColor: p.color,
-                      boxShadow: `0 0 10px ${p.color}`,
-                    }}
-                  />
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        {/* 7x7 Grid */}
-        <div className="grid grid-cols-7 gap-2" role="group" aria-label="7行7列宝石棋盘">
-          {grid.map((row, r) =>
-            row.map((gem, c) => {
-              const isSelected = selectedPos?.row === r && selectedPos?.col === c;
-              const isHinted = hintPositions?.some(p => p.row === r && p.col === c);
-              const isShaking = shakePos?.row === r && shakePos?.col === c;
-              const isMatching = gem?.isMatching;
-
-              return (
-                <button
-                  type="button"
-                  key={gem ? gem.id : `empty_${r}_${c}`}
-                  data-row={r}
-                  data-col={c}
-                  data-gem={gem?.type}
-                  data-special={gem?.special}
-                  data-locked={gem?.locked ? 'true' : 'false'}
-                  aria-label={`第${r + 1}行第${c + 1}列 ${gem ? GEM_NAMES[gem.type] : '空'} ${gem ? SPECIAL_NAMES[gem.special] : ''}${gem?.locked ? ' 已锁定' : ''}`}
-                  aria-pressed={isSelected}
-                  disabled={isProcessing}
-                  onKeyDown={event => {
-                    const delta = { ArrowLeft: [0, -1], ArrowRight: [0, 1], ArrowUp: [-1, 0], ArrowDown: [1, 0] }[event.key];
-                    if (delta) { event.preventDefault(); const next = event.currentTarget.parentElement?.querySelector<HTMLButtonElement>(`[data-row="${r + delta[0]}"][data-col="${c + delta[1]}"]`); next?.focus(); }
-                  }}
-                  onClick={() => handleTileClick(r, c)}
-                  draggable={!gem?.locked && !isProcessing}
-                  onDragStart={(e) => handleDragStart(e, r, c)}
-                  onDragOver={handleDragOver}
-                  onDrop={(e) => handleDrop(e, r, c)}
-                  className={`relative w-11 h-11 sm:w-12 sm:h-12 md:w-13 md:h-13 flex items-center justify-center rounded-xl cursor-pointer transition-all duration-150 ${
-                    isSelected
-                      ? 'ring-2 ring-rose-400 ring-offset-2 ring-offset-zinc-950 scale-105 z-20 shadow-[0_0_18px_rgba(244,63,94,0.8)]'
-                      : 'hover:scale-[1.03] hover:brightness-110 active:scale-95'
-                  } ${isHinted ? 'ring-2 ring-amber-400 animate-pulse' : ''} ${
-                    isShaking ? 'scale-90 ring-2 ring-red-500 animate-pulse' : ''
-                  } ${
-                    isMatching
-                      ? 'scale-125 brightness-150 ring-4 ring-rose-400/90 drop-shadow-[0_0_25px_#f43f5e] z-30 animate-pulse'
-                      : ''
-                  }`}
-                >
-                  {gem && (
-                    <GemIcon
-                      type={gem.type}
-                      special={gem.special}
-                      locked={gem.locked}
-                      fireCountdown={gem.fireCountdown}
-                      size={46}
-                    />
-                  )}
-
-                  {/* Explosive Elimination Particle Flash */}
-                  {isMatching && (
-                    <div className="absolute inset-0 rounded-xl bg-white/70 pointer-events-none animate-ping" />
-                  )}
-                </button>
-              );
-            })
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};
+  return <div className="match-board relative" data-testid="game-board" data-processing={isProcessing}>
+    <div className="match-board-heading demo-board-top"><div className="match-board-status" aria-live="polite" aria-atomic="true" data-testid="match-feedback" data-kind={feedback?.kind ?? 'ready'} data-chain={comboCount}>
+      <strong>{feedback ? feedback.title : '连成同色，打开他的心防'}</strong><span>{feedback ? `${feedback.count} 颗命中 · 心防 −${feedback.damage}${feedback.detail ? ` · ${feedback.detail}` : ''}` : '四消合成冲击针 · 五消合成恶女之瞳'}</span>
+    </div><button className="match-hint" onClick={onHint} disabled={isProcessing} title="心理洞察提示" aria-label="心理洞察提示"><Lightbulb size={17} /><span>洞察</span></button></div>
+    <div className="match-chain-bar"><span className={comboCount > 1 ? 'is-active' : ''}><Zap size={13} />连锁 {comboCount} 轮 <b>×{lastMultiplier.toFixed(2)}</b></span><span className={streak >= 3 ? 'is-active' : ''}><Flame size={13} />连续命中 {streak}{streak >= 3 ? ' · SP +3' : ''}</span></div>
+    <div className="match-board-frame"><div className="match-grid-wrap">
+      <div className="grid grid-cols-7 gap-2 match-grid" role="group" aria-label="7行7列宝石棋盘" onPointerUp={finishSwipe} onPointerCancel={() => { touchStart.current = null; }}>
+        {grid.map((line, row) => line.map((gem, col) => {
+          const pos = { row, col }, selected = same(selectedPos, pos), hinted = hintPositions?.some(item => same(item, pos));
+          const old = gem ? previousPositions.current.get(gem.id) : null;
+          const fromX = old ? old.col - col : 0, fromY = old ? old.row - row : -Math.min(4, row + 1);
+          const moving = gem && (fromX !== 0 || fromY !== 0);
+          return <button key={`${row}-${col}`} type="button" data-row={row} data-col={col} data-gem={gem?.type} data-gem-id={gem?.id} data-special={gem?.special} data-locked={gem?.locked ? 'true' : 'false'} data-matching={Boolean(gem?.isMatching)} aria-label={`第${row + 1}行第${col + 1}列 ${gem ? GEM_NAMES[gem.type] : '空'} ${gem ? SPECIAL_NAMES[gem.special] : ''}${gem?.locked ? ' 已锁定' : ''}`} aria-pressed={selected} disabled={isProcessing}
+            className={`match-tile ${selected ? 'is-selected' : ''} ${hinted ? 'ring-amber-400 is-hinted' : ''} ${same(shake, pos) ? 'is-shaking' : ''} ${gem?.isMatching ? 'is-clearing' : ''}`}
+            onKeyDown={event => { const delta = { ArrowLeft: [0, -1], ArrowRight: [0, 1], ArrowUp: [-1, 0], ArrowDown: [1, 0] }[event.key]; if (delta) { event.preventDefault(); event.currentTarget.parentElement?.querySelector<HTMLButtonElement>(`[data-row="${row + delta[0]}"][data-col="${col + delta[1]}"]`)?.focus(); } }}
+            onClick={() => select(pos)} draggable={Boolean(gem && !gem.locked && !isProcessing)} onDragStart={event => startDrag(event, pos)} onDragOver={event => event.preventDefault()} onDrop={event => drop(event, pos)} onDragEnd={() => { dragged.current = null; }}
+            onPointerDown={event => { if (event.pointerType !== 'mouse' && !isProcessing && gem && !gem.locked) { suppressClick.current = false; touchStart.current = { pos, x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); } }}>
+            {gem && <div key={`${gem.id}-${row}-${col}`} className={`gem-motion ${moving ? 'is-moving' : ''}`} style={{ '--from-x': `${fromX * 115}%`, '--from-y': `${fromY * 115}%` } as CSSProperties}><GemIcon type={gem.type} special={gem.special} locked={gem.locked} fireCountdown={gem.fireCountdown} size={46} /></div>}
+          </button>;
+        }))}
+      </div>{feedback && <ClearEffects key={feedback.id} feedback={feedback} />}
+    </div></div>
+    <div className="match-pattern-key" aria-label="特殊消除速查"><span><ArrowRight size={13} /><ArrowDown size={13} />四消 · 清行／列</span><span><Sparkles size={13} />L / T · 炸弹</span><span><Eye size={13} />五消以上 · 清色 +1步</span></div>
+  </div>;
+}

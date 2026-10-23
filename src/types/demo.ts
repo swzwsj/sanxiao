@@ -1,4 +1,4 @@
-import type { Grid, Position } from './game';
+import type { ClearFeedback, Grid, Position } from './game';
 export type Approach = 'direct' | 'patient';
 export type Response = 'press' | 'reassure';
 export type BattleStatus = 'ready' | 'playing' | 'resolving' | 'dialogue' | 'finished';
@@ -60,6 +60,10 @@ export interface BattleState {
   response: Response | null;
   maxCombo: number;
   combo: number;
+  streak: number;
+  feedback: ClearFeedback | null;
+  totalCleared: number;
+  turnsEarned: number;
   multiplier: number;
   bonusTitle: string;
   message: string;

@@ -1,4 +1,4 @@
-import type { DefensePhase, Gem, GemType, Grid, MatchResult, Position, SpecialType } from '../types/game';
+import type { CombinationKind, DefensePhase, Gem, GemType, Grid, MatchResult, Position, SpecialCombination, SpecialType } from '../types/game';
 export const GRID_ROWS = 7;
 export const GRID_COLS = 7;
 export const ALL_GEM_TYPES: GemType[] = ['seduction', 'hypnosis', 'empathy', 'desire', 'trauma'];
@@ -65,7 +65,7 @@ export function findMatches(grid: Grid, swapAction?: { from: Position; to: Posit
     const intersection = positions.find(p => group.filter(run => run.positions.some(q => positionKey(q) === positionKey(p))).length > 1);
     const preferred = swapAction && [swapAction.to, swapAction.from].find(p => positions.some(q => positionKey(p) === positionKey(q)));
     const pos = preferred || intersection || positions[Math.floor(positions.length / 2)];
-    return { matches: positions, type: group[0].type, specialToCreate: special === 'none' ? undefined : { pos, special } };
+    return { matches: positions, type: group[0].type, runLength: longest, shape: cross ? 'cross' : group[0].axis === 'h' ? 'line_h' : 'line_v', specialToCreate: special === 'none' ? undefined : { pos, special } };
   });
 }
 /** One validator for player swaps, hints, special activation, and deadlock detection. */
@@ -75,16 +75,33 @@ export function getSwapEffect(grid: Grid, from: Position, to: Position) {
   if (!a || !b || a.locked || b.locked) return null;
   const swapped = swapGems(grid, from, to);
   const forced: Position[] = [];
+  let combination: SpecialCombination | null = null;
+  const row = (r: number) => { for (let col = 0; col < 7; col++) forced.push({ row: r, col }); };
+  const column = (c: number) => { for (let r = 0; r < 7; r++) forced.push({ row: r, col: c }); };
+  const area = (center: Position, radius: number) => { for (let dr = -radius; dr <= radius; dr++) for (let dc = -radius; dc <= radius; dc++) forced.push({ row: center.row + dr, col: center.col + dc }); };
   if (a.special === 'eye' || b.special === 'eye') {
     const all = a.special === 'eye' && b.special === 'eye';
-    const type = a.special === 'eye' ? b.type : a.type;
-    swapped.forEach((row, r) => row.forEach((gem, c) => { if (gem && (all || gem.type === type)) forced.push({ row: r, col: c }); }));
+    const partner = a.special === 'eye' ? b : a;
+    const kind: CombinationKind = all ? 'eye-eye' : partner.special === 'bomb' ? 'eye-bomb' : partner.special.startsWith('line_') ? 'eye-line' : 'eye-color';
+    combination = { kind, consumed: [from, to], origin: to };
+    swapped.forEach((line, r) => line.forEach((gem, c) => {
+      if (!gem || (!all && gem.type !== partner.type)) return;
+      forced.push({ row: r, col: c });
+      if (kind === 'eye-bomb') area({ row: r, col: c }, 1);
+      if (kind === 'eye-line') { if (partner.special === 'line_h') row(r); else column(c); }
+    }));
     forced.push(from, to);
-    const eyePos = a.special === 'eye' ? to : from;
-    swapped[eyePos.row][eyePos.col] = { ...swapped[eyePos.row][eyePos.col]!, type };
-  } else if (a.special !== 'none' && b.special !== 'none') forced.push(from, to);
+  } else if (a.special !== 'none' && b.special !== 'none') {
+    const kind = a.special === 'bomb' && b.special === 'bomb' ? 'bomb-bomb' : a.special === 'bomb' || b.special === 'bomb' ? 'line-bomb' : 'line-line';
+    combination = { kind, consumed: [from, to], origin: to };
+    forced.push(from, to);
+    if (kind === 'bomb-bomb') area(to, 2);
+    else if (kind === 'line-line') { row(to.row); column(to.col); }
+    else for (let offset = -1; offset <= 1; offset++) { row(to.row + offset); column(to.col + offset); }
+  }
   const matches = findMatches(swapped, { from, to });
-  return matches.length || forced.length ? { grid: swapped, matches, forced } : null;
+  const affectsSwap = matches.some(match => match.matches.some(p => positionKey(p) === positionKey(from) || positionKey(p) === positionKey(to)));
+  return affectsSwap || forced.length ? { grid: swapped, matches, forced, combination } : null;
 }
 export function findPossibleSwap(grid: Grid): Position[] | null {
   for (let row = 0; row < 7; row++) for (let col = 0; col < 7; col++) {
@@ -94,16 +111,18 @@ export function findPossibleSwap(grid: Grid): Position[] | null {
   return null;
 }
 export const hasPossibleMoves = (grid: Grid) => Boolean(findPossibleSwap(grid));
-export function resolveClear(grid: Grid, matches: MatchResult[], forced: Position[] = [], random = Math.random) {
+export function resolveClear(grid: Grid, matches: MatchResult[], forced: Position[] = [], random = Math.random, combination: SpecialCombination | null = null) {
   const positions = new Map<string, Position>();
   const queue: Position[] = [];
   const add = (p: Position) => { if (inBounds(p) && grid[p.row][p.col] && !positions.has(positionKey(p))) { positions.set(positionKey(p), p); queue.push(p); } };
   matches.forEach(match => match.matches.forEach(add)); forced.forEach(add);
-  let specialCount = 0;
+  const consumed = new Set(combination?.consumed.map(positionKey));
+  const activated: { pos: Position; special: SpecialType }[] = [];
   for (let i = 0; i < queue.length; i++) {
     const p = queue[i], gem = grid[p.row][p.col]!;
     if (gem.special === 'none') continue;
-    specialCount++;
+    activated.push({ pos: p, special: gem.special });
+    if (consumed.has(positionKey(p))) continue;
     if (gem.special === 'line_h') for (let col = 0; col < 7; col++) add({ row: p.row, col });
     if (gem.special === 'line_v') for (let row = 0; row < 7; row++) add({ row, col: p.col });
     if (gem.special === 'bomb') for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) add({ row: p.row + dr, col: p.col + dc });
@@ -123,8 +142,25 @@ export function resolveClear(grid: Grid, matches: MatchResult[], forced: Positio
     const { pos, special } = match.specialToCreate;
     next[pos.row][pos.col] = createGem(match.type, special, random);
   }
-  return { grid: next, positions: [...positions.values()], count: positions.size, sp, heal, trauma, specialCount };
+  return { grid: next, positions: [...positions.values()], count: positions.size, sp, heal, trauma, specialCount: activated.length, activated };
 }
+
+export const COMBINATION_NAMES: Record<CombinationKind, string> = {
+  'line-line': '十字贯穿', 'line-bomb': '三线轰击', 'bomb-bomb': '双重爆破',
+  'eye-color': '同色共鸣', 'eye-line': '共鸣扫射', 'eye-bomb': '共鸣爆破', 'eye-eye': '全盘共鸣',
+};
+/** Shared by the controller and the rules UI; one reward per natural match group. */
+export function matchRewards(matches: MatchResult[]) {
+  let damage = 0, sp = 0, grantsTurn = false;
+  for (const match of matches) {
+    if (match.runLength >= 5) { const bonus = 5 + (match.runLength - 5) * 3; damage += bonus; sp += bonus; grantsTurn = true; }
+    else if (match.shape === 'cross') { damage += 3; sp += 4; }
+    else if (match.runLength === 4) { damage += 2; sp += 3; }
+  }
+  const simultaneousBonus = Math.max(0, matches.length - 1) * 2;
+  return { damage: damage + simultaneousBonus, sp: sp + simultaneousBonus, grantsTurn };
+}
+export const chainMultiplier = (chain: number) => 1 + Math.min(6, Math.max(0, chain - 1)) * .25;
 export function applyGravityAndRefill(grid: Grid, random = Math.random): { newGrid: Grid; fallenGemsCount: number } {
   const next: Grid = Array.from({ length: 7 }, () => Array(7).fill(null));
   let fallenGemsCount = 0;

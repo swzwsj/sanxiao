@@ -1,5 +1,6 @@
 import React from 'react';
 import { GemType, SpecialType } from '../types/game';
+import { Bomb, Eye, Link2 } from 'lucide-react';
 
 interface GemIconProps {
   type: GemType;
@@ -86,33 +87,33 @@ export const GemIcon: React.FC<GemIconProps> = ({
 
       {/* Central Symbol */}
       <span className="font-serif font-black text-white/95 text-lg drop-shadow-md select-none pointer-events-none">
-        {special === 'eye' ? '👁' : special === 'bomb' ? '💥' : c.symbol}
+        {special === 'eye' ? <Eye size={21} strokeWidth={2.2} /> : special === 'bomb' ? <Bomb size={21} strokeWidth={2.2} /> : c.symbol}
       </span>
 
       {/* Special indicator lasers */}
       {special === 'line_h' && (
-        <div className="absolute inset-x-0 h-1 bg-white shadow-[0_0_8px_#fff] animate-pulse pointer-events-none rounded-full" />
+        <div className="absolute inset-x-0 h-1 bg-white pointer-events-none rounded-full" />
       )}
       {special === 'line_v' && (
-        <div className="absolute inset-y-0 w-1 bg-white shadow-[0_0_8px_#fff] animate-pulse pointer-events-none rounded-full" />
+        <div className="absolute inset-y-0 w-1 bg-white pointer-events-none rounded-full" />
       )}
       {special === 'bomb' && (
-        <div className="absolute inset-0 rounded-xl border-2 border-dashed border-amber-300 animate-spin pointer-events-none opacity-80" />
+        <div className="absolute inset-0 rounded-xl border-2 border-dashed border-amber-300 pointer-events-none opacity-80" />
       )}
       {special === 'eye' && (
-        <div className="absolute inset-0 rounded-xl bg-gradient-to-tr from-pink-500/30 to-purple-500/30 animate-pulse pointer-events-none" />
+        <div className="absolute inset-0 rounded-xl bg-gradient-to-tr from-pink-500/30 to-purple-500/30 pointer-events-none" />
       )}
 
       {/* Locked Chain Overlay */}
       {locked && (
         <div className="absolute inset-0 bg-black/60 rounded-xl flex items-center justify-center border-2 border-red-500/70 z-10 pointer-events-none backdrop-blur-[1px]">
-          <span className="text-xl" title="心结死锁：需邻近消除解锁">⛓️</span>
+          <Link2 size={23} aria-label="心结死锁：需邻近消除解锁" />
         </div>
       )}
 
       {/* Fire countdown overlay */}
       {typeof fireCountdown === 'number' && (
-        <div className="absolute -top-1 -right-1 bg-red-600 text-white font-mono font-bold text-[10px] w-5 h-5 rounded-full flex items-center justify-center shadow-lg border border-amber-300 z-10 animate-bounce pointer-events-none">
+        <div className="absolute -top-1 -right-1 bg-red-600 text-white font-mono font-bold text-[10px] w-5 h-5 rounded-full flex items-center justify-center shadow-lg border border-amber-300 z-10 pointer-events-none">
           {fireCountdown}
         </div>
       )}

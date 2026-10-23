@@ -22,10 +22,37 @@ export interface Position {
 export interface MatchResult {
   matches: Position[];
   type: GemType;
+  /** Longest straight run, independent of a connected L/T group's total size. */
+  runLength: number;
+  shape: 'line_h' | 'line_v' | 'cross';
   specialToCreate?: {
     pos: Position;
     special: SpecialType;
   };
+}
+
+export type CombinationKind = 'line-line' | 'line-bomb' | 'bomb-bomb' | 'eye-color' | 'eye-line' | 'eye-bomb' | 'eye-eye';
+export interface SpecialCombination {
+  kind: CombinationKind;
+  consumed: Position[];
+  origin: Position;
+}
+export interface ClearFeedback {
+  id: number;
+  kind: 'three' | 'four' | 'five' | 'long' | 'cross' | 'special';
+  title: string;
+  detail: string;
+  chain: number;
+  count: number;
+  damage: number;
+  multiplier: number;
+  spGain: number;
+  extraTurn: boolean;
+  groups: number;
+  cells: { pos: Position; type: GemType }[];
+  created: { pos: Position; special: SpecialType }[];
+  activated: { pos: Position; special: SpecialType }[];
+  combination: SpecialCombination | null;
 }
 
 export type DefensePhase = 'guarded' | 'wavering' | 'breakdown' | 'submissive';
