@@ -11,7 +11,8 @@ export interface DemoConfig {
   sceneId: string;
   title: string;
   objective: string;
-  seed: number;
+  /** Null creates a fresh board per attempt. A number opts into reproducible play. */
+  seed: number | null;
   turns: number;
   /** Null uses a turn budget; a number enables an explicitly timed encounter. */
   timeLimitSeconds: number | null;
@@ -26,6 +27,7 @@ export interface BattleResult {
   runId: string;
   battleId: string;
   sceneId: string;
+  seed: number;
   outcome: Outcome;
   reason: FinishReason;
   grade: 'S' | 'A' | 'B' | 'C';
@@ -47,6 +49,7 @@ export interface BattleResult {
 }
 export interface BattleState {
   runId: string;
+  seed: number;
   status: BattleStatus;
   paused: boolean;
   grid: Grid;

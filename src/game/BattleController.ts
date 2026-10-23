@@ -1,7 +1,7 @@
 import type { ClearFeedback, Gem, Grid, MatchResult, PlayerSkill, Position, SpecialCombination } from '../types/game';
 import type { Approach, BattleResult, BattleState, BattleStory, DemoConfig, FinishReason } from '../types/demo';
 import { encounterProgress } from './progress';
-import { applyGravityAndRefill, chainMultiplier, COMBINATION_NAMES, createGem, createInitialGrid, findMatches, findPossibleSwap, getSwapEffect, hasPossibleMoves, inBounds, isAdjacent, matchRewards, positionKey, reshuffleGrid, resolveClear, seededRandom, swapGems } from '../utils/match3Engine';
+import { applyGravityAndRefill, chainMultiplier, COMBINATION_NAMES, createBoardSeed, createGem, createInitialGrid, findMatches, findPossibleSwap, getSwapEffect, hasPossibleMoves, inBounds, isAdjacent, matchRewards, positionKey, reshuffleGrid, resolveClear, seededRandom, swapGems } from '../utils/match3Engine';
 
 type Options = { animationMs?: number; onSound?: (kind: 'swap' | 'match' | 'break' | 'invalid' | 'skill', combo: number) => void; onClear?: (feedback: ClearFeedback) => void };
 
@@ -13,6 +13,7 @@ export class BattleController {
   private aborter = new AbortController();
   private storyId = 0;
   private random: () => number;
+  private seed: number;
   private feedbackId = 0;
   private pendingVictory = false;
   private pendingComposureFailure = false;
@@ -20,7 +21,9 @@ export class BattleController {
   constructor(readonly config: DemoConfig, private options: Options = {}) {
     if (!config.phases.length || config.phases.some(p => p.defense <= 0) || !Number.isInteger(config.turns) || config.turns <= 0 || (config.timeLimitSeconds !== null && (!Number.isFinite(config.timeLimitSeconds) || config.timeLimitSeconds <= 0))) throw new Error('Invalid encounter configuration');
     if (!Object.values(config.breakProgress).every(Number.isFinite) || config.breakProgress.maximum <= 0 || config.breakProgress.successGain < 0 || !config.nextNode.id) throw new Error('Invalid story progress configuration');
-    this.random = seededRandom(config.seed);
+    if (config.seed !== null && (!Number.isInteger(config.seed) || config.seed < 0 || config.seed > 0xffffffff)) throw new Error('Invalid board seed');
+    this.seed = config.seed ?? createBoardSeed();
+    this.random = seededRandom(this.seed);
     this.state = this.initialState();
   }
 
@@ -28,7 +31,7 @@ export class BattleController {
     const grid = createInitialGrid(this.random);
     grid[3][3] = { ...grid[3][3]!, special: 'eye' };
     return {
-      runId: globalThis.crypto.randomUUID(), status: 'ready', paused: false, grid,
+      runId: globalThis.crypto.randomUUID(), seed: this.seed, status: 'ready', paused: false, grid,
       phaseIndex: 0, defense: this.config.phases[0].defense, sp: 25, composure: 100,
       turnsRemaining: this.config.turns, turnsUsed: 0,
       remainingMs: this.config.timeLimitSeconds === null ? null : this.config.timeLimitSeconds * 1000,
@@ -49,7 +52,7 @@ export class BattleController {
     this.aborter = new AbortController();
   }
   dispose() { this.cancel(); this.listeners.clear(); }
-  reset() { this.cancel(); this.pendingVictory = false; this.pendingComposureFailure = false; this.random = seededRandom(this.config.seed); this.state = this.initialState(); this.listeners.forEach(listener => listener()); }
+  reset() { this.cancel(); this.pendingVictory = false; this.pendingComposureFailure = false; this.seed = this.config.seed ?? createBoardSeed(this.seed); this.random = seededRandom(this.seed); this.state = this.initialState(); this.listeners.forEach(listener => listener()); }
   start(approach: Approach) {
     if (this.state.status !== 'ready') return;
     this.patch({ status: 'playing', approach, story: this.storyFor(0), defense: approach === 'direct' ? Math.max(1, Math.round(this.config.phases[0].defense * .8)) : this.config.phases[0].defense, sp: approach === 'patient' ? 50 : 25, message: approach === 'patient' ? '他没有接话，却也没有再起身离开。' : '他收起笑意，终于迎上你的目光。' });
@@ -95,6 +98,12 @@ export class BattleController {
     const story = this.state.story;
     if (!story || story.id !== id || story.lineIndex !== lineIndex || story.lineIndex >= story.lines.length - 1 || this.state.paused || this.state.status === 'finished') return;
     this.patch({ story: { ...story, lineIndex: story.lineIndex + 1 } });
+  }
+
+  replayStory(id: number) {
+    const story = this.state.story;
+    if (!story || story.id !== id || this.state.paused || this.state.status === 'finished') return;
+    this.patch({ story: { ...story, id: ++this.storyId, lineIndex: 0 } });
   }
 
   private phaseObstacles() {
@@ -258,7 +267,7 @@ export class BattleController {
     const score = Math.round((s.turnsRemaining / this.config.turns) * 35 + s.composure * .3 + Math.min(5, s.maxCombo) * 7);
     const grade = outcome === 'success' ? score >= 80 ? 'S' : score >= 65 ? 'A' : score >= 45 ? 'B' : 'C' : outcome === 'partial' ? 'B' : 'C';
     const continuationId = outcome === 'success' ? s.approach === 'direct' ? 'consultation.continue.tense' : 'consultation.continue.open' : outcome === 'partial' ? 'consultation.continue.guarded' : 'consultation.interrupted';
-    const result: BattleResult = { version: 1, runId: s.runId, battleId: this.config.id, sceneId: this.config.sceneId, outcome, reason, grade, approach: s.approach, response: s.response, phasesCleared: outcome === 'success' ? this.config.phases.length : s.phaseIndex, turnsUsed: s.turnsUsed, turnsRemaining: s.turnsRemaining, maxCombo: s.maxCombo, composure: s.composure, activeTimeMs: Math.round(s.activeTimeMs), storyFlags: [`approach:${s.approach}`, ...(s.response ? [`response:${s.response}`] : []), `consultation:${outcome}`], continuationId, ...encounterProgress(this.config, outcome === 'success'), nextNodeId: this.config.nextNode.id };
+    const result: BattleResult = { version: 1, runId: s.runId, battleId: this.config.id, sceneId: this.config.sceneId, seed: s.seed, outcome, reason, grade, approach: s.approach, response: s.response, phasesCleared: outcome === 'success' ? this.config.phases.length : s.phaseIndex, turnsUsed: s.turnsUsed, turnsRemaining: s.turnsRemaining, maxCombo: s.maxCombo, composure: s.composure, activeTimeMs: Math.round(s.activeTimeMs), storyFlags: [`approach:${s.approach}`, ...(s.response ? [`response:${s.response}`] : []), `consultation:${outcome}`], continuationId, ...encounterProgress(this.config, outcome === 'success'), nextNodeId: this.config.nextNode.id };
     this.patch({ status: 'finished', paused: false, hint: null, result });
     this.cancel();
   }

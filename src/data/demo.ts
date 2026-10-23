@@ -3,7 +3,7 @@ import type { Approach, DemoConfig, DialogueLine } from '../types/demo';
 export const DEMO_CONFIG: DemoConfig = {
   id: 'yuchi-consultation-demo', sceneId: 'consultation-middle',
   title: '这一次，听我说完', objective: '突破三重心防，让这场会谈继续。',
-  seed: 20261020, turns: 18, timeLimitSeconds: null,
+  seed: null, turns: 18, timeLimitSeconds: null,
   phases: [
     { name: '试探', defense: 24, quote: '“你总是把话题引回我身上。那你呢？”', dialogue: [
       { speaker: 'target', text: '你每次都在拆解我的话。就不能当作一个玩笑？' },

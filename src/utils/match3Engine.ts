@@ -9,6 +9,11 @@ export function seededRandom(seed: number) {
   let value = seed >>> 0;
   return () => { value += 0x6d2b79f5; let t = Math.imul(value ^ (value >>> 15), 1 | value); t ^= t + Math.imul(t ^ (t >>> 7), 61 | t); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 }
+/** Fresh entropy per attempt; a collision with the preceding seed cannot repeat a retry. */
+export function createBoardSeed(previous?: number) {
+  const seed = globalThis.crypto.getRandomValues(new Uint32Array(1))[0];
+  return seed === previous ? (seed + 1) >>> 0 : seed;
+}
 export function createGem(type?: GemType, special: SpecialType = 'none', random = Math.random): Gem {
   return { id: `gem_${++gemCounter}`, type: type ?? ALL_GEM_TYPES[Math.floor(random() * 5)], special, isNew: true };
 }

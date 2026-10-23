@@ -23,7 +23,9 @@ import type { Position } from './types/game';
 const query = new URLSearchParams(window.location.search);
 const embedded = query.get('embed') === '1';
 const timed = Number(query.get('timed'));
-const config = { ...DEMO_CONFIG, timeLimitSeconds: timed >= 10 && timed <= 600 ? timed : DEMO_CONFIG.timeLimitSeconds };
+const seedQuery = query.get('seed');
+const replaySeed = seedQuery !== null && /^\d{1,10}$/.test(seedQuery) && Number(seedQuery) <= 0xffffffff ? Number(seedQuery) : null;
+const config = { ...DEMO_CONFIG, seed: replaySeed ?? DEMO_CONFIG.seed, timeLimitSeconds: timed >= 10 && timed <= 600 ? timed : DEMO_CONFIG.timeLimitSeconds };
 const displayTime = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, '0')}`;
 const outcomes = { success: '会谈目标达成', partial: '会谈有所推进', failure: '会谈暂时中断' };
 const reasons = { defense_broken: '三重心防已经突破。', turn_limit: '本场步数已用尽。', time_limit: '本场诊疗时间已用尽。', composure: '从容度耗尽，暂时失去主动权。' };
@@ -37,6 +39,7 @@ export default function App() {
   }, onClear: feedback => soundManager.playClear(feedback) }));
   const state = useBattle(controller);
   const advanceStory = useCallback((id: number, lineIndex: number) => controller.advanceStory(id, lineIndex), [controller]);
+  const replayStory = useCallback((id: number) => controller.replayStory(id), [controller]);
   const [screen, setScreen] = useState<'before' | 'choice' | 'intro' | 'battle' | 'after'>(embedded ? 'intro' : 'before');
   const [approach, setApproach] = useState<Approach | null>(null);
   const appRoot = useRef<HTMLDivElement>(null);
@@ -116,7 +119,7 @@ export default function App() {
           <p className="demo-board-tip">{state.vulnerabilityTurns > 0 ? `创伤回溯生效 · 接下来 ${state.vulnerabilityTurns} 次有效交换伤害 +40%` : state.turnsUsed === 0 ? '首局提示：中央的「恶女之瞳」与相邻宝石交换，可清除全盘同色宝石。' : '直线五消以上返还 1 步 · 连续命中 3 次起 SP +3 · 洞察免费'}</p>
           <SkillsBar currentSp={state.sp} maxSp={100} onCastSkill={skill => { setSelected(null); void controller.cast(skill); }} isProcessing={busy || state.turnsUsed === 0 || state.skillUsedThisTurn} composure={state.composure} maxComposure={100} />
           <div className="demo-battle-note"><span>{state.turnsUsed === 0 ? '首次有效交换后可使用技能' : state.skillUsedThisTurn ? '本回合技能已用，交换后可再次释放' : '每次有效交换后可释放 1 个技能'}</span><span>已突破 {state.result?.phasesCleared ?? state.phaseIndex} / {config.phases.length} 重心防</span></div>
-        </section><DemoStage state={state} config={config} onNextStory={advanceStory} /></div>
+        </section><DemoStage state={state} config={config} onNextStory={advanceStory} onReplayStory={replayStory} /></div>
       </>}
 
       {screen === 'after' && <FilmSlot position="after" config={config} result={state.result} onContinue={() => { controller.reset(); setScreen('before'); setApproach(null); setPaused(false); }} />}

@@ -1,15 +1,11 @@
-.battle-story { position: absolute; bottom: 0; left: 0; right: 0; padding: 40px 20px 16px; background: linear-gradient(transparent,#171017ee 22%,#100c12fa); }
-.battle-story-speaker { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-.battle-story-speaker>span { display: inline-flex; align-items: center; gap: 7px; color: #fda4af; font-size: 12px; font-weight: 600; }
-.battle-story-speaker>small { color: #c4b5c2; font-size: 10px; font-variant-numeric: tabular-nums; }
-.battle-story-line { color: #faf5f7; font-size: 15px; line-height: 1.9; min-height: 58px; margin: 11px 0 13px; animation: battle-line-appear .22s ease-out; }
-.battle-story-controls { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-.battle-story-controls>button { display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; padding: 6px 0; color: #e9cddc; font-size: 10px; min-height: 28px; }
-.battle-story-controls>button:hover { color: white; }
-.battle-story-controls>button:disabled { opacity: .4; }
+.portrait-interact { position: absolute; inset: 0; display: block; width: 100%; height: 100%; border: 0; padding: 0; background: transparent; }
+.portrait-interact>img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center top; filter: saturate(.85); animation: battle-portrait-appear .24s ease-out; }
+.demo-portrait-phase-1 .portrait-interact>img { filter: saturate(.9) contrast(1.04); }
+.demo-portrait-phase-2 .portrait-interact>img { filter: saturate(1.05) contrast(1.08); }
+.portrait-interact-hint { position: absolute; top: 50px; left: 12px; display: inline-flex; align-items: center; gap: 5px; padding: 5px 0; color: #fff5eb; font-size: 10px; text-shadow: 0 1px 5px #100811, 0 1px 2px #100811; }
+.portrait-interact:hover .portrait-interact-hint { text-decoration: underline; text-underline-offset: 4px; }
+.portrait-interact:focus-visible { outline-offset: -5px; }
+.demo-portrait-tag,.demo-damage { pointer-events: none; }
 .battle-stage-event { color: #b7aab3; font-size: 10px; line-height: 1.8; margin: 14px 0 0; min-height: 32px; }
-.is-heroine-speaking>img { animation: battle-portrait-appear .24s ease-out; }
-@keyframes battle-line-appear { from { opacity: .35; } to { opacity: 1; } }
 @keyframes battle-portrait-appear { from { opacity: .7; transform: translateX(-8px); } to { opacity: 1; transform: translateX(0); } }
-@media(max-width:740px) { .battle-story { padding: 38px 16px 12px; } .battle-story-line { font-size: 14px; min-height: 55px; } .battle-story-controls>button { min-height: 32px; padding: 8px 3px; } }
-@media(prefers-reduced-motion:reduce) { .battle-story-line,.is-heroine-speaking>img { animation: none !important; } }
+@media(prefers-reduced-motion:reduce) { .portrait-interact>img { animation: none !important; } }

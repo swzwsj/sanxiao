@@ -4,9 +4,10 @@ import { BattleController } from '../src/game/BattleController';
 import { DEMO_CONFIG } from '../src/data/demo';
 import { PLAYER_SKILLS } from '../src/data/characters';
 import { findMatches, findPossibleSwap, getSwapEffect, hasPossibleMoves, resolveClear, seededRandom } from '../src/utils/match3Engine';
-import type { ClearFeedback, Position } from '../src/types/game';
+import type { ClearFeedback, Grid, Position } from '../src/types/game';
 
-const make = (extra = {}) => new BattleController({ ...DEMO_CONFIG, ...extra }, { animationMs: 0 });
+const make = (extra = {}) => new BattleController({ ...DEMO_CONFIG, seed: 20261020, ...extra }, { animationMs: 0 });
+const boardSignature = (grid: Grid) => JSON.stringify(grid.map(row => row.map(gem => gem && [gem.type, gem.special])));
 function bestMove(controller: BattleController): Position[] {
   const grid = controller.getSnapshot().grid;
   let best: Position[] = [], score = -1;
@@ -19,6 +20,55 @@ function bestMove(controller: BattleController): Position[] {
   }
   return best;
 }
+
+test('normal openings and retries get fresh seeds and different stable playable layouts', () => {
+  assert.equal(DEMO_CONFIG.seed, null);
+  const c = new BattleController(DEMO_CONFIG);
+  const layouts = new Set<string>();
+  let preceding: number | undefined;
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const state = c.getSnapshot();
+    assert.notEqual(state.seed, preceding);
+    assert.equal(state.grid.flat().filter(Boolean).length, 49);
+    assert.equal(findMatches(state.grid).length, 0);
+    assert.ok(findPossibleSwap(state.grid));
+    const signature = boardSignature(state.grid);
+    assert.equal(layouts.has(signature), false);
+    layouts.add(signature); preceding = state.seed;
+    c.reset();
+  }
+  assert.equal(layouts.has(boardSignature(new BattleController(DEMO_CONFIG).getSnapshot().grid)), false);
+});
+
+test('an explicit seed reproduces the opening and refill sequence, including on retry', async () => {
+  const c = make({ phases: [{ name: 'test', defense: 10000, quote: '' }] });
+  const initial = c.getSnapshot();
+  const move = findPossibleSwap(initial.grid)!;
+  c.start('patient'); await c.swap(move[0], move[1]);
+  const refill = boardSignature(c.getSnapshot().grid);
+  c.reset();
+  assert.notEqual(c.getSnapshot().runId, initial.runId);
+  assert.equal(c.getSnapshot().seed, initial.seed);
+  assert.equal(boardSignature(c.getSnapshot().grid), boardSignature(initial.grid));
+  c.start('patient'); await c.swap(move[0], move[1]);
+  assert.equal(boardSignature(c.getSnapshot().grid), refill);
+  const another = make();
+  assert.equal(boardSignature(another.getSnapshot().grid), boardSignature(initial.grid));
+});
+
+test('the result returns the random seed so a film session can be reproduced', async () => {
+  const c = make({ seed: null, phases: [{ name: 'test', defense: 1, quote: '' }] });
+  const initial = c.getSnapshot(); c.start('patient');
+  const [from, to] = findPossibleSwap(initial.grid)!; await c.swap(from, to);
+  assert.equal(c.getSnapshot().result?.seed, initial.seed);
+  const replay = make({ seed: c.getSnapshot().result!.seed });
+  assert.equal(boardSignature(replay.getSnapshot().grid), boardSignature(initial.grid));
+});
+
+test('board seeds must be unsigned 32-bit integers or null', () => {
+  for (const seed of [-1, .5, Infinity, NaN, 0x100000000]) assert.throws(() => make({ seed }), /Invalid board seed/);
+  for (const seed of [0, 0xffffffff, null]) assert.doesNotThrow(() => make({ seed }));
+});
 
 test('ready, pause and animations do not spend time; active input does', async () => {
   const c = make({ timeLimitSeconds: 60, phases: [{ name: 'test', defense: 10000, quote: '' }] });
@@ -158,6 +208,19 @@ test('portrait dialogue can advance during an active elimination without blockin
   assert.equal(c.getSnapshot().story?.lineIndex, 1); assert.equal(c.getSnapshot().status, 'resolving');
   await action;
   assert.equal(c.getSnapshot().status, 'playing'); assert.equal(findMatches(c.getSnapshot().grid).length, 0);
+});
+
+test('replaying a story preserves battle state and rejects callbacks from its previous playback', () => {
+  const c = make(); c.start('patient');
+  const first = c.getSnapshot().story!; c.advanceStory(first.id, first.lineIndex);
+  const { story, ...before } = c.getSnapshot();
+  c.replayStory(story!.id);
+  const { story: replay, ...after } = c.getSnapshot();
+  assert.deepEqual(after, before); assert.equal(replay?.lineIndex, 0); assert.notEqual(replay?.id, story!.id);
+  assert.deepEqual(replay?.lines, story?.lines);
+  const expected = c.getSnapshot();
+  c.advanceStory(first.id, 0); c.replayStory(first.id); assert.equal(c.getSnapshot(), expected);
+  c.setPaused(true); const paused = c.getSnapshot(); c.replayStory(replay!.id); assert.equal(c.getSnapshot(), paused);
 });
 
 test('retry produces a new attempt without accumulating the same scene reward twice', async () => {

@@ -1,0 +1,21 @@
+.character-speech { --speech-paper: #fff5eb; --speech-ink: #452d37; --speech-accent: #932e50; position: absolute; z-index: 2; left: 14px; right: 14px; bottom: 14px; padding: 16px 18px 8px; color: var(--speech-ink); background: var(--speech-paper); border: 1px solid #ffffffc9; border-radius: 18px 18px 6px 18px; box-shadow: 0 12px 30px #08050a38; animation: character-speech-appear .2s ease-out; }
+.character-speech::before { content: ''; position: absolute; top: -8px; right: 32px; width: 16px; height: 16px; background: var(--speech-paper); border-top: 1px solid #ffffffc9; border-left: 1px solid #ffffffc9; transform: rotate(45deg); }
+.character-speech-heroine { --speech-paper: #f3f0ff; --speech-ink: #39314d; --speech-accent: #634490; border-radius: 18px 18px 18px 6px; }
+.character-speech-heroine::before { left: 32px; right: auto; }
+.character-speech-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.character-speech-heading>strong { display: inline-flex; align-items: center; gap: 7px; color: var(--speech-accent); font-size: 13px; }
+.character-speech-heading>span { color: var(--speech-accent); font-size: 12px; font-variant-numeric: tabular-nums; }
+.character-speech-heading i { color: #766572; font-size: 11px; font-style: normal; }
+.character-speech-text { display: block; width: 100%; min-height: 96px; padding: 12px 0 10px; border: 0; background: transparent; color: var(--speech-ink); text-align: left; font-family: inherit; font-size: 17px; line-height: 1.8; overflow-wrap: anywhere; }
+.character-speech-cursor { display: inline-block; width: 3px; height: .9em; margin-left: 4px; vertical-align: -.05em; border-radius: 2px; background: var(--speech-accent); animation: character-speech-cursor .7s steps(2, start) infinite; }
+.character-speech-cursor.is-finished { visibility: hidden; animation: none; }
+.character-speech-controls { display: flex; justify-content: space-between; align-items: center; gap: 12px; border-top: 1px solid #75536626; }
+.character-speech-controls>button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; padding: 6px 2px; border: 0; border-radius: 4px; background: transparent; color: #755664; font-family: inherit; font-size: 11px; }
+.character-speech-controls>.character-speech-next { color: var(--speech-accent); font-size: 12px; font-weight: 600; }
+.character-speech-controls>button:hover { color: var(--speech-ink); }
+.character-speech button:focus-visible { outline-color: var(--speech-accent); outline-offset: 3px; }
+.character-speech button:disabled { opacity: .55; }
+@keyframes character-speech-appear { from { opacity: .5; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes character-speech-cursor { to { opacity: 0; } }
+@media(max-width:740px) { .character-speech { padding: 14px 16px 6px; } .character-speech-controls>button { min-height: 44px; } }
+@media(prefers-reduced-motion:reduce) { .character-speech,.character-speech-cursor { animation: none !important; } }
